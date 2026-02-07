@@ -33,6 +33,7 @@ impl fmt::Display for Declaration {
             Declaration::Function(func) => write!(f, "{}", func),
             Declaration::Type(ty) => write!(f, "{}", ty),
             Declaration::Protocol(proto) => write!(f, "{}", proto),
+            Declaration::Macro(macro_decl) => write!(f, "{}", macro_decl),
         }
     }
 }
@@ -237,6 +238,16 @@ impl fmt::Display for Expr {
             Expr::Rand => write!(f, "rand()"),
             Expr::PI => write!(f, "PI"),
             Expr::E => write!(f, "E"),
+            Expr::Match { expr, cases, default } => {
+                write!(f, "match({}) {{\n", expr.node)?;
+                for case in cases {
+                    write!(f, "  case {} => {};\n", case.pattern, case.expr.node)?;
+                }
+                if let Some(def) = default {
+                    write!(f, "  default => {};\n", def.node)?;
+                }
+                write!(f, "}}")
+            },
             Expr::Error => write!(f, "<error>"),
         }
     }
@@ -270,6 +281,70 @@ impl fmt::Display for UnOp {
         match self {
             UnOp::Neg => write!(f, "-"),
             UnOp::Not => write!(f, "!"),
+        }
+    }
+}
+
+impl fmt::Display for MacroDecl {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "def {}(", self.name)?;
+        for (i, param) in self.params.iter().enumerate() {
+            if i > 0 { write!(f, ", ")?; }
+            write!(f, "{}", param)?;
+        }
+        write!(f, ")")?;
+        if let Some(ret_type) = &self.return_type {
+            write!(f, ": {}", ret_type)?;
+        }
+        write!(f, " => {}", self.body.node)
+    }
+}
+
+impl fmt::Display for MacroParam {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            MacroParam::Normal { name, type_annotation } => {
+                write!(f, "{}: {}", name, type_annotation)
+            }
+            MacroParam::Symbolic { name, type_annotation } => {
+                write!(f, "@{}: {}", name, type_annotation)
+            }
+            MacroParam::Placeholder { name, type_annotation } => {
+                write!(f, "${}: {}", name, type_annotation)
+            }
+            MacroParam::Body { name, type_annotation } => {
+                write!(f, "*{}: {}", name, type_annotation)
+            }
+        }
+    }
+}
+
+impl fmt::Display for Pattern {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Pattern::Literal(expr) => write!(f, "{}", expr),
+            Pattern::Variable { name, type_annotation } => {
+                if let Some(ty) = type_annotation {
+                    write!(f, "{}: {}", name, ty)
+                } else {
+                    write!(f, "{}", name)
+                }
+            }
+            Pattern::Binary { left, op, right } => {
+                write!(f, "({} {} {})", left, op, right)
+            }
+            Pattern::Unary { op, operand } => {
+                write!(f, "{}{}", op, operand)
+            }
+            Pattern::Call { func, args } => {
+                write!(f, "{}(", func)?;
+                for (i, arg) in args.iter().enumerate() {
+                    if i > 0 { write!(f, ", ")?; }
+                    write!(f, "{}", arg)?;
+                }
+                write!(f, ")")
+            }
+            Pattern::Wildcard => write!(f, "_"),
         }
     }
 }

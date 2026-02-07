@@ -1,43 +1,21 @@
 use hulk_compiler::parser::Parser;
 use hulk_compiler::ast::optimize::optimize_program;
+use std::io::{self, Read};
+use std::env;
 
 fn main() {
-    println!("--- HULK AST Visualization ---\n");
+    // Leer input de stdin o argumentos
+    let input = if env::args().len() > 1 {
+        // Si hay argumentos, usar el primer argumento como código
+        env::args().nth(1).unwrap()
+    } else {
+        // Si no, leer de stdin
+        let mut buffer = String::new();
+        io::stdin().read_to_string(&mut buffer).expect("Failed to read from stdin");
+        buffer
+    };
 
-    let _input = r#"
-        protocol Hashable {
-            hash(): Number;
-        }
-
-        type Point(x, y) {
-            x = x;
-            y = y;
-            hash() => self.x ^ 2 + self.y ** 2;
-            distance(other: Point) => sqrt((self.x - other.x) ^ 2 + (self.y - other.y) ^ 2);
-        }
-
-        function solve_quadratic(a, b, c) {
-            let disc = b ^ 2 - 4 * a * c in {
-                if (disc < 0) print("No real roots")
-                elif (disc == 0) print(-b / (2 * a))
-                else {
-                    print((-b + sqrt(disc)) / (2 * a));
-                    print((-b - sqrt(disc)) / (2 * a));
-                };
-            };
-        }
-
-        let p1 = new Point(1, 2), 
-            p2 = new Point(3, 4)
-        in {
-            print("Distance: " @ p1.distance(p2));
-            print("PI Value: " @ PI);
-            print("Random: " @ rand());
-        }
-    "#;
-    // Ejemplo con variables
-    let a = "2/0";
-    let mut parser = Parser::new(a);
+    let mut parser = Parser::new(&input);
     match parser.parse_program() {
         Ok(program) => {
             println!("Parsed successfully!\n");
@@ -49,7 +27,6 @@ fn main() {
             println!("\nDebug Representation (Internal structure):\n");
             println!("{:#?}", program);
             
-            // Aplicar optimizaciones
             let optimized = optimize_program(program);
             
             println!("\n=== DESPUÉS DE OPTIMIZAR ===\n");
@@ -61,6 +38,7 @@ fn main() {
         }
         Err(e) => {
             eprintln!("Parsing failed: {}", e);
+            std::process::exit(1);
         }
     }
 }

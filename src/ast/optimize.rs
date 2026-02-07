@@ -91,6 +91,11 @@ fn optimize_declaration(decl: Declaration, interner: &mut StringInterner, env: &
                 }).collect(),
             })
         }
+        Declaration::Macro(macro_decl) => {
+            // Las macros se expanden antes de la optimización
+            // Por ahora, simplemente pasarlas sin optimizar
+            Declaration::Macro(macro_decl)
+        }
     }
 }
 

@@ -11,6 +11,7 @@ pub enum Declaration {
     Function(FunctionDecl),
     Type(TypeDecl),
     Protocol(ProtocolDecl),
+    Macro(MacroDecl),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -71,6 +72,60 @@ pub struct MethodSignature {
     pub name: String,
     pub params: Vec<Param>,
     pub return_type: TypeAnnotation,
+}
+
+// --- Macros ---
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct MacroDecl {
+    pub name: String,
+    pub params: Vec<MacroParam>,
+    pub return_type: Option<TypeAnnotation>,
+    pub body: Spanned<Expr>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum MacroParam {
+    // Parámetro normal: se expande como expresión
+    Normal { name: String, type_annotation: TypeAnnotation },
+    // Parámetro simbólico (@): se pasa el nombre de la variable
+    Symbolic { name: String, type_annotation: TypeAnnotation },
+    // Placeholder ($): introduce nueva variable en el scope
+    Placeholder { name: String, type_annotation: TypeAnnotation },
+    // Body (*): captura bloque de expresiones
+    Body { name: String, type_annotation: TypeAnnotation },
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct MatchCase {
+    pub pattern: Pattern,
+    pub expr: Spanned<Expr>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum Pattern {
+    // Literal: 0, 1, "hello", true
+    Literal(Expr),
+    // Variable: x, y (captura cualquier valor)
+    Variable { name: String, type_annotation: Option<TypeAnnotation> },
+    // Binaria: (x + y), (a * b)
+    Binary {
+        left: Box<Pattern>,
+        op: Op,
+        right: Box<Pattern>,
+    },
+    // Unaria: -x, !y
+    Unary {
+        op: UnOp,
+        operand: Box<Pattern>,
+    },
+    // Llamada: f(x, y)
+    Call {
+        func: String,
+        args: Vec<Pattern>,
+    },
+    // Wildcard: _ (ignora valor)
+    Wildcard,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -170,6 +225,13 @@ pub enum Expr {
     Rand,
     PI,
     E,
+    
+    // --- Pattern Matching (para macros) ---
+    Match {
+        expr: Box<Spanned<Expr>>,
+        cases: Vec<MatchCase>,
+        default: Option<Box<Spanned<Expr>>>,
+    },
     
     /// Nodo de error para recuperación de errores
     Error,

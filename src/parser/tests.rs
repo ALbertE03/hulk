@@ -48,6 +48,268 @@ fn test_parse_basic_arithmetic() {
     assert_eq!(program, expected);
 }
 
+// ============ MACRO TESTS ============
+
+#[test]
+fn test_parse_simple_macro_definition() {
+    let input = "def double(x: Number): Number => x * 2;";
+    let mut parser = Parser::new(input);
+    let program = parser.parse_program().unwrap();
+    
+    assert_eq!(program.declarations.len(), 1);
+    match &program.declarations[0] {
+        Declaration::Macro(macro_decl) => {
+            assert_eq!(macro_decl.name, "double");
+            assert_eq!(macro_decl.params.len(), 1);
+            match &macro_decl.params[0] {
+                MacroParam::Normal { name, .. } => assert_eq!(name, "x"),
+                _ => panic!("Expected normal parameter"),
+            }
+            assert!(macro_decl.return_type.is_some());
+        }
+        _ => panic!("Expected macro declaration"),
+    }
+}
+
+#[test]
+fn test_parse_macro_with_body_arg() {
+    let input = "def repeat(n: Number, *expr: Object): Object => expr;";
+    let mut parser = Parser::new(input);
+    let program = parser.parse_program().unwrap();
+    
+    assert_eq!(program.declarations.len(), 1);
+    match &program.declarations[0] {
+        Declaration::Macro(macro_decl) => {
+            assert_eq!(macro_decl.name, "repeat");
+            assert_eq!(macro_decl.params.len(), 2);
+            
+            match &macro_decl.params[0] {
+                MacroParam::Normal { name, .. } => assert_eq!(name, "n"),
+                _ => panic!("Expected normal parameter"),
+            }
+            
+            match &macro_decl.params[1] {
+                MacroParam::Body { name, .. } => assert_eq!(name, "expr"),
+                _ => panic!("Expected body parameter with *"),
+            }
+        }
+        _ => panic!("Expected macro declaration"),
+    }
+}
+
+#[test]
+fn test_parse_macro_with_symbolic_args() {
+    let input = "def swap(@a: Object, @b: Object) => let temp = a in { a := b; b := temp; };";
+    let mut parser = Parser::new(input);
+    let program = parser.parse_program().unwrap();
+    
+    match &program.declarations[0] {
+        Declaration::Macro(macro_decl) => {
+            assert_eq!(macro_decl.name, "swap");
+            assert_eq!(macro_decl.params.len(), 2);
+            
+            match &macro_decl.params[0] {
+                MacroParam::Symbolic { name, .. } => assert_eq!(name, "a"),
+                _ => panic!("Expected symbolic parameter with @"),
+            }
+            
+            match &macro_decl.params[1] {
+                MacroParam::Symbolic { name, .. } => assert_eq!(name, "b"),
+                _ => panic!("Expected symbolic parameter with @"),
+            }
+        }
+        _ => panic!("Expected macro declaration"),
+    }
+}
+
+#[test]
+fn test_parse_macro_with_placeholder() {
+    let input = "def repeat($iter: Number, n: Number, *expr: Object) => expr;";
+    let mut parser = Parser::new(input);
+    let program = parser.parse_program().unwrap();
+    
+    match &program.declarations[0] {
+        Declaration::Macro(macro_decl) => {
+            assert_eq!(macro_decl.params.len(), 3);
+            
+            match &macro_decl.params[0] {
+                MacroParam::Placeholder { name, .. } => assert_eq!(name, "iter"),
+                _ => panic!("Expected placeholder parameter with $"),
+            }
+            
+            match &macro_decl.params[1] {
+                MacroParam::Normal { name, .. } => assert_eq!(name, "n"),
+                _ => panic!("Expected normal parameter"),
+            }
+            
+            match &macro_decl.params[2] {
+                MacroParam::Body { name, .. } => assert_eq!(name, "expr"),
+                _ => panic!("Expected body parameter"),
+            }
+        }
+        _ => panic!("Expected macro declaration"),
+    }
+}
+
+#[test]
+fn test_parse_match_expression() {
+    let input = "match(x) { case (y: Number + 0) => y; default => x; };";
+    let mut parser = Parser::new(input);
+    let program = parser.parse_program().unwrap();
+    
+    match &program.expr.node {
+        Expr::Match { expr, cases, default } => {
+            // Verificar expresión a matchear
+            match &expr.node {
+                Expr::Identifier(name) => assert_eq!(name, "x"),
+                _ => panic!("Expected identifier in match"),
+            }
+            
+            // Verificar casos
+            assert_eq!(cases.len(), 1);
+            match &cases[0].pattern {
+                Pattern::Binary { .. } => {},
+                _ => panic!("Expected binary pattern"),
+            }
+            
+            // Verificar default
+            assert!(default.is_some());
+        }
+        _ => panic!("Expected match expression"),
+    }
+}
+
+#[test]
+fn test_parse_pattern_literal() {
+    let input = "match(x) { case 5 => 10; default => 0; };";
+    let mut parser = Parser::new(input);
+    let program = parser.parse_program().unwrap();
+    
+    match &program.expr.node {
+        Expr::Match { cases, .. } => {
+            match &cases[0].pattern {
+                Pattern::Literal(Expr::Number(n)) => assert_eq!(*n, 5.0),
+                _ => panic!("Expected literal pattern"),
+            }
+        }
+        _ => panic!("Expected match expression"),
+    }
+}
+
+#[test]
+fn test_parse_pattern_variable() {
+    let input = "match(x) { case y: Number => y * 2; default => 0; };";
+    let mut parser = Parser::new(input);
+    let program = parser.parse_program().unwrap();
+    
+    match &program.expr.node {
+        Expr::Match { cases, .. } => {
+            match &cases[0].pattern {
+                Pattern::Variable { name, type_annotation } => {
+                    assert_eq!(name, "y");
+                    assert!(type_annotation.is_some());
+                }
+                _ => panic!("Expected variable pattern"),
+            }
+        }
+        _ => panic!("Expected match expression"),
+    }
+}
+
+#[test]
+fn test_parse_pattern_binary() {
+    let input = "match(expr) { case (x: Number + y: Number) => x; default => 0; };";
+    let mut parser = Parser::new(input);
+    let program = parser.parse_program().unwrap();
+    
+    match &program.expr.node {
+        Expr::Match { cases, .. } => {
+            match &cases[0].pattern {
+                Pattern::Binary { left, op, right } => {
+                    assert_eq!(*op, Op::Add);
+                    match &**left {
+                        Pattern::Variable { name, .. } => assert_eq!(name, "x"),
+                        _ => panic!("Expected variable in left"),
+                    }
+                    match &**right {
+                        Pattern::Variable { name, .. } => assert_eq!(name, "y"),
+                        _ => panic!("Expected variable in right"),
+                    }
+                }
+                _ => panic!("Expected binary pattern"),
+            }
+        }
+        _ => panic!("Expected match expression"),
+    }
+}
+
+#[test]
+fn test_parse_complete_macro_with_match() {
+    let input = r#"def simplify(expr: Number) {
+    match(expr) {
+        case (x: Number + 0) => x;
+        case (x: Number * 1) => x;
+        default => expr;
+    };
+}"#;
+    let mut parser = Parser::new(input);
+    let program = parser.parse_program().unwrap();
+    
+    match &program.declarations[0] {
+        Declaration::Macro(macro_decl) => {
+            assert_eq!(macro_decl.name, "simplify");
+            
+            // Verificar que el body es un bloque que contiene un match
+            match &macro_decl.body.node {
+                Expr::Block(exprs) => {
+                    assert_eq!(exprs.len(), 1);
+                    match &exprs[0].node {
+                        Expr::Match { cases, default, .. } => {
+                            assert_eq!(cases.len(), 2);
+                            assert!(default.is_some());
+                        }
+                        _ => panic!("Expected match inside block"),
+                    }
+                }
+                _ => panic!("Expected block in macro body"),
+            }
+        }
+        _ => panic!("Expected macro declaration"),
+    }
+}
+
+#[test]
+fn test_parse_multiple_macros_and_functions() {
+    let input = r#"
+        def double(x: Number): Number => x * 2;
+        function triple(x: Number): Number => x * 3;
+        def quadruple(x: Number): Number => double(double(x));
+        triple(5)
+    "#;
+    let mut parser = Parser::new(input);
+    let program = parser.parse_program().unwrap();
+    
+    assert_eq!(program.declarations.len(), 3);
+    
+    // Primera: macro double
+    match &program.declarations[0] {
+        Declaration::Macro(m) => assert_eq!(m.name, "double"),
+        _ => panic!("Expected macro"),
+    }
+    
+    // Segunda: función triple
+    match &program.declarations[1] {
+        Declaration::Function(f) => assert_eq!(f.name, "triple"),
+        _ => panic!("Expected function"),
+    }
+    
+    // Tercera: macro quadruple
+    match &program.declarations[2] {
+        Declaration::Macro(m) => assert_eq!(m.name, "quadruple"),
+        _ => panic!("Expected macro"),
+    }
+}
+
 #[test]
 fn test_parse_function_declaration() {
     let input = "function add(a, b) => a + b; add(1, 2);";

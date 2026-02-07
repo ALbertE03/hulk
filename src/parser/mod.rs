@@ -167,10 +167,12 @@ impl Parser {
             Ok(Declaration::Type(self.parse_type_decl()?))
         } else if self.match_token(&Token::Protocol) {
             Ok(Declaration::Protocol(self.parse_protocol_decl()?))
+        } else if self.match_token(&Token::Def) {
+            Ok(Declaration::Macro(self.parse_macro_decl()?))
         } else {
             let pos = self.peek_pos();
             Err(ParseError::UnexpectedToken {
-                expected: "function, type, or protocol".to_string(),
+                expected: "function, type, protocol, or def".to_string(),
                 found: self.peek_description(),
                 pos,
             })
@@ -255,6 +257,10 @@ impl Parser {
             Token::If => self.parse_if_expr(pos),
             Token::While => self.parse_while_expr(pos),
             Token::For => self.parse_for_expr(pos),
+            Token::Match => {
+                let match_expr = self.parse_match_expr()?;
+                Ok(Spanned::new(match_expr, pos))
+            }
             Token::LBrace => self.parse_block_expr(pos),
             Token::New => self.parse_instantiation_expr(pos),
             Token::LBracket => self.parse_vector_expr(pos),
@@ -651,7 +657,7 @@ impl Parser {
 
     /// Determina si la posición actual pertenece al inicio de una expresión.
     fn is_expr_start(&self) -> bool {
-        !self.check(&Token::Function) && !self.check(&Token::Type) && !self.check(&Token::Protocol)
+        !self.check(&Token::Function) && !self.check(&Token::Type) && !self.check(&Token::Protocol) && !self.check(&Token::Def)
     }
 
     /// Convierte un `Token` de operador en el enum `Op` correspondiente.
@@ -935,6 +941,40 @@ impl Parser {
         }
     }
 
+    /// Parsea type annotation sin consumir * (para usar en patterns donde * es multiplicación)
+    fn parse_type_annotation_no_star(&mut self) -> Result<TypeAnnotation, ParseError> {
+        if self.match_token(&Token::LParen) {
+            let mut params = Vec::new();
+            if !self.check(&Token::RParen) {
+                loop {
+                    params.push(self.parse_type_annotation_no_star()?);
+                    if !self.match_token(&Token::Comma) {
+                        break;
+                    }
+                }
+            }
+            self.consume(&Token::RParen, "Expected ')' after type params")?;
+            self.consume(&Token::TypeArrow, "Expected '->' for function type")?;
+            let return_type = self.parse_type_annotation_no_star()?;
+            Ok(TypeAnnotation::Function {
+                params,
+                return_type: Box::new(return_type),
+            })
+        } else {
+            let name = match self.advance()?.0 {
+                Token::Identifier(n) => n,
+                t => return Err(ParseError::UnexpectedToken {
+                    expected: "type name".to_string(),
+                    found: format!("{:?}", t),
+                    pos: self.peek_pos(),
+                }),
+            };
+            
+            // NO consumimos * aquí porque en patterns puede ser multiplicación
+            Ok(TypeAnnotation::Name(name))
+        }
+    }
+
     /// Analiza una lista de parámetros dentro de paréntesis y devuelve `Vec<Param>`.
     fn parse_params(&mut self) -> Result<Vec<Param>, ParseError> {
         let mut params = Vec::new();
@@ -963,6 +1003,294 @@ impl Parser {
             }
         }
         Ok(params)
+    }
+
+    // --- Parsing de Macros ---
+
+    /// Analiza una declaración de macro: def name(params) => body
+    fn parse_macro_decl(&mut self) -> Result<MacroDecl, ParseError> {
+        // Consumir 'def' ya está hecho en parse_declaration
+        
+        // Nombre de la macro
+        let name = match self.advance()?.0 {
+            Token::Identifier(n) => n,
+            t => return Err(ParseError::UnexpectedToken {
+                expected: "macro name".to_string(),
+                found: format!("{:?}", t),
+                pos: self.peek_pos(),
+            }),
+        };
+
+        // Parámetros
+        self.consume(&Token::LParen, "Expected '(' after macro name")?;
+        let params = self.parse_macro_params()?;
+        self.consume(&Token::RParen, "Expected ')' after macro parameters")?;
+
+        // Tipo de retorno opcional
+        let return_type = if self.match_token(&Token::Colon) {
+            Some(self.parse_type_annotation()?)
+        } else {
+            None
+        };
+
+        // Cuerpo de la macro: puede ser => expr o un bloque { ... }
+        let body = if self.match_token(&Token::FuncArrow) {
+            // Forma corta: => expr
+            self.parse_spanned_expr(Precedence::Lowest)?
+        } else {
+            // Forma de bloque: { ... }
+            let pos = self.peek_pos();  // Guardar posición antes de consumir {
+            if !self.match_token(&Token::LBrace) {
+                return Err(ParseError::UnexpectedToken {
+                    expected: "'=>' or '{' before macro body".to_string(),
+                    found: self.peek_description(),
+                    pos: self.peek_pos(),
+                });
+            }
+            self.parse_block_expr(pos)?
+        };
+
+        // Semicolon opcional
+        self.match_token(&Token::Semicolon);
+
+        Ok(MacroDecl {
+            name,
+            params,
+            return_type,
+            body,
+        })
+    }
+
+    /// Analiza parámetros de macro con prefijos especiales (@, $, *)
+    fn parse_macro_params(&mut self) -> Result<Vec<MacroParam>, ParseError> {
+        let mut params = Vec::new();
+
+        if self.check(&Token::RParen) {
+            return Ok(params);
+        }
+
+        loop {
+            // Detectar prefijo
+            let prefix = if self.match_token(&Token::Concat) { // @ usado para symbolic args
+                Some("@")
+            } else if self.match_token(&Token::Dollar) {
+                Some("$")
+            } else if self.match_token(&Token::Star) {
+                Some("*")
+            } else {
+                None
+            };
+
+            // Nombre del parámetro
+            let name = match self.advance()?.0 {
+                Token::Identifier(n) => n,
+                t => return Err(ParseError::UnexpectedToken {
+                    expected: "parameter name".to_string(),
+                    found: format!("{:?}", t),
+                    pos: self.peek_pos(),
+                }),
+            };
+
+            // Tipo (obligatorio)
+            self.consume(&Token::Colon, "Expected ':' after parameter name")?;
+            let type_annotation = self.parse_type_annotation()?;
+
+            // Crear parámetro según prefijo
+            let param = match prefix {
+                Some("@") => MacroParam::Symbolic { name, type_annotation },
+                Some("$") => MacroParam::Placeholder { name, type_annotation },
+                Some("*") => MacroParam::Body { name, type_annotation },
+                None => MacroParam::Normal { name, type_annotation },
+                _ => unreachable!(),
+            };
+
+            params.push(param);
+
+            if !self.match_token(&Token::Comma) {
+                break;
+            }
+        }
+
+        Ok(params)
+    }
+
+    /// Analiza una expresión match con pattern matching
+    fn parse_match_expr(&mut self) -> Result<Expr, ParseError> {
+        // Consumir 'match' ya está hecho
+        self.consume(&Token::LParen, "Expected '(' after 'match'")?;
+        
+        let expr = Box::new(self.parse_spanned_expr(Precedence::Lowest)?);
+
+        self.consume(&Token::RParen, "Expected ')' after match expression")?;
+        self.consume(&Token::LBrace, "Expected '{' to start match body")?;
+
+        // Parsear casos
+        let mut cases = Vec::new();
+        let mut default = None;
+
+        while !self.check(&Token::RBrace) && !self.at_end() {
+            if self.match_token(&Token::Case) {
+                // case pattern => expr
+                let pattern = self.parse_pattern()?;
+                self.consume(&Token::FuncArrow, "Expected '=>' after case pattern")?;
+                let case_expr = self.parse_spanned_expr(Precedence::Lowest)?;
+                self.consume(&Token::Semicolon, "Expected ';' after case expression")?;
+
+                cases.push(MatchCase {
+                    pattern,
+                    expr: case_expr,
+                });
+            } else if self.match_token(&Token::Default) {
+                // default => expr
+                self.consume(&Token::FuncArrow, "Expected '=>' after 'default'")?;
+                let default_expr = Box::new(self.parse_spanned_expr(Precedence::Lowest)?);
+                self.consume(&Token::Semicolon, "Expected ';' after default expression")?;
+
+                default = Some(default_expr);
+                break; // default debe ser el último
+            } else {
+                return Err(ParseError::UnexpectedToken {
+                    expected: "'case' or 'default'".to_string(),
+                    found: self.peek_description(),
+                    pos: self.peek_pos(),
+                });
+            }
+        }
+
+        self.consume(&Token::RBrace, "Expected '}' to close match body")?;
+
+        Ok(Expr::Match {
+            expr,
+            cases,
+            default,
+        })
+    }
+
+    /// Analiza un patrón para pattern matching
+    fn parse_pattern(&mut self) -> Result<Pattern, ParseError> {
+        // Por simplicidad, empezar con paréntesis para patrones complejos
+        if self.match_token(&Token::LParen) {
+            let pattern = self.parse_pattern_expr()?;
+            self.consume(&Token::RParen, "Expected ')' after pattern")?;
+            Ok(pattern)
+        } else {
+            self.parse_pattern_expr()
+        }
+    }
+
+    /// Analiza expresión de patrón (puede ser binaria, literal, variable, etc.)
+    fn parse_pattern_expr(&mut self) -> Result<Pattern, ParseError> {
+        // Intentar parsear como expresión binaria con recursión
+        self.parse_pattern_binary(Precedence::Lowest)
+    }
+
+    /// Analiza patrón binario con precedencia
+    fn parse_pattern_binary(&mut self, precedence: Precedence) -> Result<Pattern, ParseError> {
+        let mut left = self.parse_pattern_primary()?;
+
+        while !self.at_end() && precedence < self.peek_precedence() {
+            let op = self.peek_binary_op();
+            if op.is_none() {
+                break;
+            }
+
+            let (_, _pos) = self.advance()?; // consumir operador
+            let op = op.unwrap();
+
+            let next_prec = self.peek_precedence();
+            let right = self.parse_pattern_binary(next_prec)?;
+
+            left = Pattern::Binary {
+                left: Box::new(left),
+                op,
+                right: Box::new(right),
+            };
+        }
+
+        Ok(left)
+    }
+
+    /// Analiza patrón primario (literal, variable, wildcard, unario)
+    fn parse_pattern_primary(&mut self) -> Result<Pattern, ParseError> {
+        let (token, pos) = self.advance()?;
+
+        match token {
+            // Literales
+            Token::Number(n) => Ok(Pattern::Literal(Expr::Number(n))),
+            Token::StringLiteral(s) => Ok(Pattern::Literal(Expr::String(s))),
+            Token::True => Ok(Pattern::Literal(Expr::Boolean(true))),
+            Token::False => Ok(Pattern::Literal(Expr::Boolean(false))),
+
+            // Identifier: puede ser variable con tipo o sin tipo
+            Token::Identifier(name) => {
+                // Si hay :, es variable tipada
+                let type_annotation = if self.match_token(&Token::Colon) {
+                    // En patterns, no consumimos * después del tipo
+                    // porque * puede ser parte del patrón binario (multiplicación)
+                    Some(self.parse_type_annotation_no_star()?)
+                } else {
+                    None
+                };
+
+                Ok(Pattern::Variable {
+                    name,
+                    type_annotation,
+                })
+            }
+
+            // Operador unario
+            Token::Minus => {
+                let operand = self.parse_pattern_primary()?;
+                Ok(Pattern::Unary {
+                    op: UnOp::Neg,
+                    operand: Box::new(operand),
+                })
+            }
+
+            Token::Not => {
+                let operand = self.parse_pattern_primary()?;
+                Ok(Pattern::Unary {
+                    op: UnOp::Not,
+                    operand: Box::new(operand),
+                })
+            }
+
+            // Paréntesis
+            Token::LParen => {
+                let pattern = self.parse_pattern_expr()?;
+                self.consume(&Token::RParen, "Expected ')' after pattern")?;
+                Ok(pattern)
+            }
+
+            _ => Err(ParseError::UnexpectedToken {
+                expected: "pattern (literal, variable, or unary)".to_string(),
+                found: format!("{:?}", token),
+                pos,
+            }),
+        }
+    }
+
+    /// Obtiene el operador binario del token actual (si existe)
+    fn peek_binary_op(&self) -> Option<Op> {
+        match self.peek() {
+            Some(Ok((Token::Plus, _))) => Some(Op::Add),
+            Some(Ok((Token::Minus, _))) => Some(Op::Sub),
+            Some(Ok((Token::Star, _))) => Some(Op::Mul),
+            Some(Ok((Token::Slash, _))) => Some(Op::Div),
+            Some(Ok((Token::Percent, _))) => Some(Op::Mod),
+            Some(Ok((Token::Power, _))) => Some(Op::Pow),
+            Some(Ok((Token::Equal, _))) => Some(Op::Eq),
+            Some(Ok((Token::NotEqual, _))) => Some(Op::Neq),
+            Some(Ok((Token::LessThan, _))) => Some(Op::Lt),
+            Some(Ok((Token::GreaterThan, _))) => Some(Op::Gt),
+            Some(Ok((Token::LessThanEq, _))) => Some(Op::Le),
+            Some(Ok((Token::GreaterThanEq, _))) => Some(Op::Ge),
+            Some(Ok((Token::And, _))) => Some(Op::And),
+            Some(Ok((Token::Or, _))) => Some(Op::Or),
+            Some(Ok((Token::Concat, _))) => Some(Op::Concat),
+            Some(Ok((Token::ConcatSpace, _))) => Some(Op::ConcatSpace),
+            _ => None,
+        }
     }
 }
 

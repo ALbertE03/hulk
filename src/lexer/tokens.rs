@@ -20,6 +20,10 @@ pub enum Token {
     True,
     False,
     In, // para 'for x in ...'
+    Def,        // para definir macros
+    Match,      // para pattern matching
+    Case,       // para casos de match
+    Default,    // para caso default en match
 
     // Identificadores
     Identifier(String),
@@ -71,6 +75,9 @@ pub enum Token {
     Colon,      // :
     Dot,        // .
     Semicolon,  // ;
+    Dollar,     // $ (para variable placeholders en macros)
+    // NOTA: @ se tokeniza como Concat, no At
+    // At se usa solo conceptualmente en parsing de macros
 
     // Especial
     EOF,

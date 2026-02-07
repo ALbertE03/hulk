@@ -159,6 +159,10 @@ impl<'a> Lexer<'a> {
             "base" => Token::Base,
             "elif" => Token::Elif,
             "extends" => Token::Extends,
+            "def" => Token::Def,
+            "match" => Token::Match,
+            "case" => Token::Case,
+            "default" => Token::Default,
             _ => Token::Identifier(ident),
         }
     }
@@ -227,6 +231,8 @@ impl<'a> Iterator for Lexer<'a> {
                     self.next_char();
                     Ok(Token::Power) // ** como alias de ^
                 } else {
+                    // Determinar si es StarPrefix o Star por contexto
+                    // Por simplicidad, siempre usar Star y el parser decidirá
                     Ok(Token::Star)
                 }
             },
@@ -287,6 +293,7 @@ impl<'a> Iterator for Lexer<'a> {
                     Ok(Token::Concat)
                 }
             },
+            '$' => Ok(Token::Dollar),
             '(' => Ok(Token::LParen),
             ')' => Ok(Token::RParen),
             '{' => Ok(Token::LBrace),

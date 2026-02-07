@@ -277,14 +277,14 @@ fn test_large_program() {
 #[test]
 fn test_multiple_errors() {
     // Separate errors that don't consume each other
-    let input = "# $ \"hello";
+    let input = "# ~ \"hello";  // ~ es inválido, $ ahora es válido para macros
     let tokens: Vec<_> = Lexer::new(input).collect();
 
     // 1. Unexpected char '#' at 1:1
     assert!(matches!(tokens[0], Err(LexError::UnexpectedCharacter('#', p)) if p.line == 1 && p.column == 1));
     
-    // 2. Unexpected char '$' at 1:3
-    assert!(matches!(tokens[1], Err(LexError::UnexpectedCharacter('$', p)) if p.line == 1 && p.column == 3));
+    // 2. Unexpected char '~' at 1:3
+    assert!(matches!(tokens[1], Err(LexError::UnexpectedCharacter('~', p)) if p.line == 1 && p.column == 3));
 
     // 3. Unterminated string starts at 1:5
     assert!(matches!(tokens[2], Err(LexError::UnterminatedString(p)) if p.line == 1 && p.column == 5));
@@ -638,3 +638,129 @@ fn test_30_complete_hulk_program() {
 
 trait BoolExt { fn is_falsy(&self) -> bool; }
 impl BoolExt for bool { fn is_falsy(&self) -> bool { !*self } }
+
+// ============ MACRO TESTS ============
+
+#[test]
+fn test_macro_keywords() {
+    let input = "def match case default";
+    let mut lexer = Lexer::new(input);
+    assert_eq!(lexer.next().unwrap().unwrap().0, Def);
+    assert_eq!(lexer.next().unwrap().unwrap().0, Match);
+    assert_eq!(lexer.next().unwrap().unwrap().0, Case);
+    assert_eq!(lexer.next().unwrap().unwrap().0, Default);
+}
+
+#[test]
+fn test_macro_special_tokens() {
+    let input = "$ @";
+    let mut lexer = Lexer::new(input);
+    assert_eq!(lexer.next().unwrap().unwrap().0, Dollar);
+    assert_eq!(lexer.next().unwrap().unwrap().0, Concat); // @ se tokeniza como Concat
+}
+
+#[test]
+fn test_simple_macro_definition() {
+    let input = "def repeat(n: Number, *expr: Object): Object => expr;";
+    let tokens: Vec<_> = Lexer::new(input).collect::<Result<Vec<_>, _>>().unwrap().into_iter().map(|(t, _)| t).collect();
+    
+    let expected = vec![
+        Def,
+        Identifier("repeat".into()),
+        LParen,
+        Identifier("n".into()),
+        Colon,
+        Identifier("Number".into()),
+        Comma,
+        Star,
+        Identifier("expr".into()),
+        Colon,
+        Identifier("Object".into()),
+        RParen,
+        Colon,
+        Identifier("Object".into()),
+        FuncArrow,
+        Identifier("expr".into()),
+        Semicolon,
+    ];
+    
+    assert_eq!(tokens, expected);
+}
+
+#[test]
+fn test_macro_with_symbolic_args() {
+    let input = "def swap(@a: Object, @b: Object)";
+    let tokens: Vec<_> = Lexer::new(input).collect::<Result<Vec<_>, _>>().unwrap().into_iter().map(|(t, _)| t).collect();
+    
+    let expected = vec![
+        Def,
+        Identifier("swap".into()),
+        LParen,
+        Concat, // @ para symbolic arg
+        Identifier("a".into()),
+        Colon,
+        Identifier("Object".into()),
+        Comma,
+        Concat,
+        Identifier("b".into()),
+        Colon,
+        Identifier("Object".into()),
+        RParen,
+    ];
+    
+    assert_eq!(tokens, expected);
+}
+
+#[test]
+fn test_macro_with_placeholder() {
+    let input = "def repeat($iter: Number, n: Number)";
+    let tokens: Vec<_> = Lexer::new(input).collect::<Result<Vec<_>, _>>().unwrap().into_iter().map(|(t, _)| t).collect();
+    
+    let expected = vec![
+        Def,
+        Identifier("repeat".into()),
+        LParen,
+        Dollar,
+        Identifier("iter".into()),
+        Colon,
+        Identifier("Number".into()),
+        Comma,
+        Identifier("n".into()),
+        Colon,
+        Identifier("Number".into()),
+        RParen,
+    ];
+    
+    assert_eq!(tokens, expected);
+}
+
+#[test]
+fn test_match_expression() {
+    let input = "match(x) { case (y: Number + 0) => y; default => x; }";
+    let tokens: Vec<_> = Lexer::new(input).collect::<Result<Vec<_>, _>>().unwrap().into_iter().map(|(t, _)| t).collect();
+    
+    assert!(tokens.contains(&Match));
+    assert!(tokens.contains(&Case));
+    assert!(tokens.contains(&Default));
+    assert!(tokens.contains(&FuncArrow));
+}
+
+#[test]
+fn test_complete_macro_with_match() {
+    let input = r#"def simplify(expr: Number) {
+    match(expr) {
+        case (x: Number + 0) => x;
+        default => expr;
+    };
+}"#;
+    
+    let tokens: Vec<_> = Lexer::new(input).collect::<Result<Vec<_>, _>>().unwrap().into_iter().map(|(t, _)| t).collect();
+    
+    // Verificar que todos los tokens clave están presentes
+    assert!(tokens.contains(&Def));
+    assert!(tokens.contains(&Match));
+    assert!(tokens.contains(&Case));
+    assert!(tokens.contains(&Default));
+    assert_eq!(tokens.iter().filter(|t| **t == LParen).count() >= 3, true);
+    assert_eq!(tokens.iter().filter(|t| **t == LBrace).count() >= 2, true);
+}
