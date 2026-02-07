@@ -452,7 +452,7 @@ impl Parser {
         let else_expr = if self.match_token(&Token::Else) {
             self.parse_spanned_expr(Precedence::Lowest)?
         } else if self.match_token(&Token::Elif) {
-            // Hulk normalmente no tiene 'elif' en el AST; se representa como if anidado
+            // 'elif' se representa como if anidado
             self.parse_if_expr(self.peek_pos())?
         } else {
             return Err(ParseError::UnexpectedToken {

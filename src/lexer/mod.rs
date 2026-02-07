@@ -230,7 +230,7 @@ impl<'a> Iterator for Lexer<'a> {
                     Ok(Token::Star)
                 }
             },
-            '/' => Ok(Token::Slash), // Comentarios manejados arriba, por lo que esto es división
+            '/' => Ok(Token::Slash), // división
             '%' => Ok(Token::Percent),
             '^' => Ok(Token::Power),
             '=' => {

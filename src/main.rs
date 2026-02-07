@@ -1,4 +1,5 @@
 use hulk_compiler::parser::Parser;
+use hulk_compiler::ast::optimize::optimize_program;
 
 fn main() {
     println!("--- HULK AST Visualization ---\n");
@@ -34,16 +35,29 @@ fn main() {
             print("Random: " @ rand());
         }
     "#;
-    let a = "(1-2)+(-2)^2^2";
+    // Ejemplo con variables
+    let a = "2/0";
     let mut parser = Parser::new(a);
     match parser.parse_program() {
         Ok(program) => {
             println!("Parsed successfully!\n");
+            
+            println!("=== ANTES DE OPTIMIZAR ===\n");
             println!("AST structure (using Display):\n");
             println!("{}", program);
             
             println!("\nDebug Representation (Internal structure):\n");
             println!("{:#?}", program);
+            
+            // Aplicar optimizaciones
+            let optimized = optimize_program(program);
+            
+            println!("\n=== DESPUÉS DE OPTIMIZAR ===\n");
+            println!("AST structure (using Display):\n");
+            println!("{}", optimized);
+            
+            println!("\nDebug Representation (Internal structure):\n");
+            println!("{:#?}", optimized);
         }
         Err(e) => {
             eprintln!("Parsing failed: {}", e);
