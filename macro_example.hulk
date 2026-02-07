@@ -11,6 +11,16 @@ protocol Describable {
     describe(): String;
 }
 
+// ─── Protocol with extends ──────────────────────────────────
+protocol Printable extends Describable {
+    to_string(): String;
+}
+
+// ─── Functor protocol: callable objects ─────────────────────
+protocol NumberTransform {
+    invoke(x: Number): Number;
+}
+
 // ─── Base class: Animal (level 1) ───────────────────────────
 type Animal(name: String, legs: Number) {
     name = name;
@@ -58,6 +68,34 @@ type Bird(name: String, can_fly: Boolean) inherits Animal(name, 2) {
     else
         self.name @ " cannot fly";
 }
+
+// ─── Functor types (implement invoke for callable objects) ──
+type Doubler() {
+    invoke(x: Number) => x * 2;
+}
+
+type Adder(offset: Number) {
+    offset = offset;
+
+    invoke(x: Number) => x + self.offset;
+}
+
+type Greeter(prefix: String) {
+    prefix = prefix;
+
+    invoke(name: String): String => self.prefix @ ", " @ name @ "!";
+}
+
+// ─── Macros (def) with different parameter types ────────────
+def double(x: Number): Number => x * 2;
+
+def triple(x: Number): Number => x * 3;
+
+def negate(x: Number): Number => 0 - x;
+
+def greet_macro(name: String): String => "Hola, " @ name @ "!";
+
+def is_positive(x: Number): Boolean => x > 0;
 
 // ─── Utility functions ──────────────────────────────────────
 function separator() => print("────────────────────────────────");
@@ -288,6 +326,59 @@ function repeat_str(s: String, n: Number): String =>
         print(rex.is_quadruped());
         print("Tweety (2 legs):");
         print(tweety.is_quadruped());
+
+        separator();
+
+        // === Section 11: Macros (def) ===
+        print("--- Macros (def) ---");
+
+        print("double(7) =" @@ double(7));
+        print("triple(5) =" @@ triple(5));
+        print("double(triple(3)) =" @@ double(triple(3)));
+        print("negate(42) =" @@ negate(42));
+
+        // Macro returning string
+        print(greet_macro("Mundo"));
+        print(greet_macro("HULK"));
+
+        // Macro returning boolean
+        print("is_positive(42):");
+        print(is_positive(42));
+        print("is_positive(-5):");
+        print(is_positive(0 - 5));
+
+        separator();
+
+        // === Section 12: Functors (callable objects with invoke) ===
+        print("--- Functors (invoke) ---");
+
+        let dbl = new Doubler() in {
+            print("Doubler(10) =" @@ dbl.invoke(10));
+            print("Doubler(25) =" @@ dbl.invoke(25));
+        };
+
+        let add5 = new Adder(5) in {
+            print("Adder(5)(10) =" @@ add5.invoke(10));
+            print("Adder(5)(100) =" @@ add5.invoke(100));
+        };
+
+        let hi = new Greeter("Hello") in {
+            print(hi.invoke("World"));
+            print(hi.invoke("HULK"));
+        };
+
+        separator();
+
+        // === Section 13: Protocol extends (structural) ===
+        print("--- Protocol Extends ---");
+
+        // Dog, Cat, Bird all satisfy Describable (have describe())
+        // This tests that protocol extends parsing works and
+        // structural typing lets us call describe() on any animal
+        print("Describable objects:");
+        print(rex.describe());
+        print(luna.describe());
+        print(tweety.describe());
 
         separator();
         print("=== ALL TESTS COMPLETE ===");

@@ -234,6 +234,40 @@ pub fn check_program(program: &Program) -> Result<Context, Vec<SemanticError>> {
             }
         }
     }
+
+    // 3a-bis. Macros (def) – register as functions for semantic analysis
+    for decl in &program.declarations {
+        if let Declaration::Macro(macro_decl) = decl {
+            let mut params = Vec::new();
+            for p in &macro_decl.params {
+                let ann = match p {
+                    MacroParam::Normal { type_annotation, .. }
+                    | MacroParam::Symbolic { type_annotation, .. }
+                    | MacroParam::Placeholder { type_annotation, .. }
+                    | MacroParam::Body { type_annotation, .. } => type_annotation,
+                };
+                let p_type = match context.resolve_type(ann) {
+                    Ok(t) => t,
+                    Err(e) => { errors.push(e); context.get_type("Object").unwrap() }
+                };
+                params.push(p_type);
+            }
+
+            let ret_type = match &macro_decl.return_type {
+                Some(ann) => {
+                    match context.resolve_type(ann) {
+                        Ok(t) => t,
+                        Err(e) => { errors.push(e); context.get_type("Object").unwrap() }
+                    }
+                },
+                None => context.get_type("Object").unwrap(),
+            };
+
+            if let Err(e) = context.define_function(&macro_decl.name, params, ret_type) {
+                errors.push(e);
+            }
+        }
+    }
     
     // 3b. Miembros de Tipos
     for decl in &program.declarations {
@@ -384,6 +418,29 @@ pub fn check_program(program: &Program) -> Result<Context, Vec<SemanticError>> {
              }
          }
     }
+
+    // Chequear Macros (def) – treat as functions for body checking
+    for decl in &program.declarations {
+         if let Declaration::Macro(macro_decl) = decl {
+             let scope = Rc::new(Scope::new());
+             let (params_types, _) = context.functions.get(&macro_decl.name).unwrap();
+             for (i, p) in macro_decl.params.iter().enumerate() {
+                 let pname = match p {
+                     MacroParam::Normal { name, .. }
+                     | MacroParam::Symbolic { name, .. }
+                     | MacroParam::Placeholder { name, .. }
+                     | MacroParam::Body { name, .. } => name,
+                 };
+                 let t = params_types[i].clone();
+                 scope.define_variable(pname.clone(), t);
+             }
+
+             let mut checker = BodyChecker::new(&context, scope);
+             if let Err(mut body_errors) = checker.check_expr(&macro_decl.body) {
+                errors.append(&mut body_errors);
+             }
+         }
+    }
     
     // Chequear Cuerpos de Tipos (Métodos y Atributos)
     for decl in &program.declarations {
@@ -400,7 +457,7 @@ pub fn check_program(program: &Program) -> Result<Context, Vec<SemanticError>> {
                  }
                  
                  let mut checker = BodyChecker::new(&context, scope);
-                 // Permitir self en init? HULK permite 'self' pero debe estar parcialmente inicializado.
+                 
                  checker.current_type = Some(type_rc.clone());
 
                  let init_type = match checker.check_expr(&attr.init) {

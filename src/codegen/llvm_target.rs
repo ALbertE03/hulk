@@ -31,10 +31,12 @@ impl super::CodeGenerator for LlvmGenerator {
             }
         }
 
-        // ── Pass 2: Emit top-level function declarations ────────────────
+        // ── Pass 2: Emit top-level function & macro declarations ───────
         for decl in &program.declarations {
-            if let Declaration::Function(fd) = decl {
-                emit_function(&mut ctx, fd);
+            match decl {
+                Declaration::Function(fd) => emit_function(&mut ctx, fd),
+                Declaration::Macro(md) => emit_macro(&mut ctx, md),
+                _ => {}
             }
         }
 
@@ -691,6 +693,56 @@ fn emit_function(ctx: &mut Ctx, fd: &FunctionDecl) {
     }
 
     let res = gen_expr(ctx, &fd.body);
+    ctx.emit(&format!("ret double {}", res));
+    ctx.functions.push_str("}\n\n");
+    ctx.exit_scope();
+}
+
+/// Emit a `def` macro as a regular LLVM function.
+/// Only Normal params are supported at codegen level; Symbolic (@), Placeholder ($)
+/// and Body (*) params are treated as normal pass-by-value for now.
+fn emit_macro(ctx: &mut Ctx, md: &MacroDecl) {
+    // Register return type
+    let ret_vty = match &md.return_type {
+        Some(TypeAnnotation::Name(n)) => match n.as_str() {
+            "String" => ValTy::Str,
+            "Number" => ValTy::Num,
+            "Boolean" => ValTy::Bool,
+            other => ValTy::Obj(other.to_string()),
+        },
+        _ => ValTy::Num,
+    };
+    ctx.func_ret_types.insert(md.name.clone(), ret_vty);
+
+    let ir_name = mangle_fn(&md.name);
+    let mut sig = String::new();
+    for (i, p) in md.params.iter().enumerate() {
+        if i > 0 { sig.push_str(", "); }
+        let pname = match p {
+            MacroParam::Normal { name, .. } => name,
+            MacroParam::Symbolic { name, .. } => name,
+            MacroParam::Placeholder { name, .. } => name,
+            MacroParam::Body { name, .. } => name,
+        };
+        sig.push_str(&format!("double %{}", pname));
+    }
+    ctx.functions.push_str(&format!("define double @{}({}) {{\nentry:\n", ir_name, sig));
+    ctx.enter_scope();
+
+    for p in &md.params {
+        let (pname, ann) = match p {
+            MacroParam::Normal { name, type_annotation } => (name, Some(TypeAnnotation::Name(match type_annotation { TypeAnnotation::Name(n) => n.clone(), _ => "Number".to_string() }))),
+            MacroParam::Symbolic { name, type_annotation } => (name, Some(TypeAnnotation::Name(match type_annotation { TypeAnnotation::Name(n) => n.clone(), _ => "Number".to_string() }))),
+            MacroParam::Placeholder { name, type_annotation } => (name, Some(TypeAnnotation::Name(match type_annotation { TypeAnnotation::Name(n) => n.clone(), _ => "Number".to_string() }))),
+            MacroParam::Body { name, type_annotation } => (name, Some(TypeAnnotation::Name(match type_annotation { TypeAnnotation::Name(n) => n.clone(), _ => "Number".to_string() }))),
+        };
+        let ptr = ctx.tmp();
+        ctx.emit(&format!("{} = alloca double", ptr));
+        ctx.emit(&format!("store double %{}, double* {}", pname, ptr));
+        ctx.def_var(pname, &ptr, val_ty_from_annotation(&ann));
+    }
+
+    let res = gen_expr(ctx, &md.body);
     ctx.emit(&format!("ret double {}", res));
     ctx.functions.push_str("}\n\n");
     ctx.exit_scope();

@@ -32,6 +32,8 @@ pub struct MacroExpansionContext {
     macros: HashMap<String, MacroDecl>,
     /// Sustituciones activas (nombre original -> nombre generado)
     substitutions: HashMap<String, String>,
+    /// Expression substitutions for Normal macro params (name -> expr)
+    expr_substitutions: HashMap<String, Spanned<Expr>>,
 }
 
 impl MacroExpansionContext {
@@ -39,6 +41,7 @@ impl MacroExpansionContext {
         MacroExpansionContext {
             macros: HashMap::new(),
             substitutions: HashMap::new(),
+            expr_substitutions: HashMap::new(),
         }
     }
 
@@ -86,8 +89,11 @@ impl MacroExpansionContext {
             // Llamadas a macros se convierten en expansión
             Expr::Call { func, args } => {
                 if let Some(macro_decl) = self.macros.get(&func).cloned() {
-                    // Expandir la macro
-                    self.expand_macro_call(&macro_decl, args, pos)
+                    // Expand arguments first, then expand the macro call
+                    let expanded_args: Vec<Spanned<Expr>> = args.into_iter().map(|a| self.expand_expr(a)).collect();
+                    let result = self.expand_macro_call(&macro_decl, expanded_args, pos);
+                    // Recursively expand the result (for nested macro calls in the body)
+                    return self.expand_expr(Spanned::new(result, pos));
                 } else {
                     // Llamada normal, expandir argumentos recursivamente
                     Expr::Call {
@@ -257,17 +263,17 @@ impl MacroExpansionContext {
     ) -> Expr {
         // Crear nuevo scope para sustituciones
         let old_substitutions = self.substitutions.clone();
+        let old_expr_substitutions = self.expr_substitutions.clone();
 
         // Procesar parámetros
         let mut _body_arg: Option<Spanned<Expr>> = None;
 
         for (i, param) in macro_decl.params.iter().enumerate() {
             match param {
-                MacroParam::Normal { name: _, .. } => {
+                MacroParam::Normal { name, .. } => {
                     // Argumento normal: sustituir nombre por expresión
-                    if let Some(_arg) = args.get(i) {
-                        // TODO: Aquí se debería hacer tree substitution real
-                        // Por ahora solo guardamos el nombre
+                    if let Some(arg) = args.get(i) {
+                        self.expr_substitutions.insert(name.clone(), arg.clone());
                     }
                 }
 
@@ -307,6 +313,7 @@ impl MacroExpansionContext {
 
         // Restaurar sustituciones anteriores
         self.substitutions = old_substitutions;
+        self.expr_substitutions = old_expr_substitutions;
 
         expanded_body.node
     }
@@ -323,7 +330,10 @@ impl MacroExpansionContext {
         let pos = expr.pos;
         let node = match expr.node {
             Expr::Identifier(name) => {
-                if let Some(substitution) = self.substitutions.get(&name) {
+                if let Some(expr_sub) = self.expr_substitutions.get(&name) {
+                    // Normal param: replace with full expression
+                    return expr_sub.clone();
+                } else if let Some(substitution) = self.substitutions.get(&name) {
                     Expr::Identifier(substitution.clone())
                 } else {
                     Expr::Identifier(name)
