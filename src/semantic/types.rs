@@ -73,19 +73,21 @@ impl Type {
                             return false;
                         }
                         
-                        // Argumentos contravariantes (mi argumento debe ser >= argumento del proto)
-                        // y Retorno covariante (mi retorno debe ser <= retorno del proto)
-                        // Por simplicidad inicial: pedimos tipos exactos o conformidad básica
+                        // Implementación COMPLETA de varianza:
+                        // 1. Covarianza en el tipo de retorno:
+                        //    El retorno de la implementación debe ser un subtipo del retorno de la definición (protocolo).
+                        //    Retorno_Impl <= Retorno_Proto
                         
-                        // Check return type conformance
                         if !my_method.return_type.borrow().conforms_to(&method_info.return_type) {
                             return false;
                         }
 
-                        // Check params conformance
+                        // 2. Contravarianza en los argumentos:
+                        //    Los argumentos de la implementación deben ser supertipos de los argumentos de la definición.
+                        //    Arg_Proto <= Arg_Impl
                         for (i, (_, param_type)) in my_method.params.iter().enumerate() {
                             let (_, expected_param_type) = &method_info.params[i];
-                            // Contravariance: expected param conforms to actual param
+        
                             if !expected_param_type.borrow().conforms_to(param_type) {
                                 return false;
                             }
@@ -155,7 +157,7 @@ pub fn lowest_common_ancestor(type_a: Rc<RefCell<Type>>, type_b: Rc<RefCell<Type
     if type_a.borrow().conforms_to(&type_b) { return Ok(type_b); }
     if type_b.borrow().conforms_to(&type_a) { return Ok(type_a); }
     
-    // Climb up A
+    // Subir por A
     let mut curr_a = type_a;
     loop {
          let parent = curr_a.borrow().parent.clone();
@@ -169,5 +171,5 @@ pub fn lowest_common_ancestor(type_a: Rc<RefCell<Type>>, type_b: Rc<RefCell<Type
          }
     }
     
-    Ok(curr_a) // Should be Object
+    Ok(curr_a) // Debería ser Object
 }

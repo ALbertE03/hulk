@@ -1,6 +1,9 @@
 pub mod types;
 pub mod scope;
 
+#[cfg(test)]
+mod tests;
+
 use crate::ast::nodes::*;
 use crate::utils::Spanned;
 use crate::errors::SemanticError;
@@ -54,22 +57,22 @@ impl Context {
     }
     
     pub fn get_function(&self, name: &str) -> Option<(Vec<Rc<RefCell<Type>>>, Rc<RefCell<Type>>)> {
-        // First check standard library functions if we had any
+        // Primero chequear funciones de la librería estándar si las hay
         if name == "print" {
             let obj = self.types.get("Object").unwrap().clone();
-            let void = self.types.get("Object").unwrap().clone(); // Assuming print returns Object/Void
+            let void = self.types.get("Object").unwrap().clone(); // Asumiendo que print retorna Object/Void
             return Some((vec![obj], void));
         }
-        // Math functions
+        // Funciones matemáticas
         if ["sin", "cos", "sqrt", "log", "exp"].contains(&name) {
              let num = self.types.get("Number").unwrap().clone();
-             return Some((vec![num.clone()], num)); // Unary
+             return Some((vec![num.clone()], num)); // Unario
         }
          if name == "log" { // Binary log(base, val) handled maybe? AST says Log(base, val)
-             // AST has Log(base, val) which is binary.
-             // But user might call `log(x)` ... wait, Context `get_function` is by name.
-             // If builtin names collide, we need to check args count. Context returns ONE signature.
-             // Assume standard lib is fixed
+             // AST tiene Log(base, val) que es binario.
+             // Pero el usuario podría llamar `log(x)` ... espera, Context `get_function` es por nombre.
+             // Si nombres builtin colisionan, necesitamos chequear cantidad de args. Context retorna UNA firma.
+             // Asumimos que la lib estándar esta fija
          }
 
         if name == "rand" {
@@ -80,20 +83,20 @@ impl Context {
         self.functions.get(name).cloned()
     }
 
-    // Resolve TypeAnnotation to actual Type
+    // Resolver TypeAnnotation al Type real
     pub fn resolve_type(&self, annotation: &TypeAnnotation) -> Result<Rc<RefCell<Type>>, SemanticError> {
         match annotation {
             TypeAnnotation::Name(name) => self.get_type(name),
             TypeAnnotation::Iterable(inner) => {
-                 // Simplification: Check if inner type exists
+                 // Simplificación: Chequear si el tipo interno existe
                  let _ = self.resolve_type(inner)?;
-                 // In a real implementation we would return a parameterized type
+                 // En una implementación real devolveríamos un tipo parametrizado
                  self.get_type("Object") 
             },
             TypeAnnotation::Function { params, return_type } => {
                 for p in params { self.resolve_type(p)?; }
                 self.resolve_type(return_type)?;
-                self.get_type("Object") // Treat function type as Object
+                self.get_type("Object") // Tratar tipo función como Object
             }
         }
     }
@@ -103,7 +106,7 @@ pub fn check_program(program: &Program) -> Result<Context, Vec<SemanticError>> {
     let mut context = Context::new();
     let mut errors = Vec::new();
 
-    // --- Pass 1: Collect Type and Protocol Names ---
+    // --- Pasada 1: Recolectar nombres de Tipos y Protocolos ---
     for decl in &program.declarations {
         match decl {
             Declaration::Type(type_decl) => {
@@ -122,7 +125,7 @@ pub fn check_program(program: &Program) -> Result<Context, Vec<SemanticError>> {
     }
     if !errors.is_empty() { return Err(errors); }
 
-    // --- Pass 2: Set Hierarchy (Parents) ---
+    // --- Pasada 2: Establecer Jerarquía (Padres) ---
     for decl in &program.declarations {
         match decl {
             Declaration::Type(type_decl) => {
@@ -130,18 +133,18 @@ pub fn check_program(program: &Program) -> Result<Context, Vec<SemanticError>> {
                     match context.get_type(&parent_init.name) {
                         Ok(parent_type) => {
                              if parent_type.borrow().kind == TypeKind::Protocol {
-                                 errors.push(SemanticError::GenericError(format!("Type {} cannot inherit from protocol {}", type_decl.name, parent_init.name)));
+                                 errors.push(SemanticError::GenericError(format!("El tipo {} no puede heredar del protocolo {}", type_decl.name, parent_init.name)));
                              } else {
                                   match context.get_type(&type_decl.name) {
                                       Ok(child) => child.borrow_mut().parent = Some(parent_type.clone()),
-                                      Err(_) => {} // Should not happen
+                                      Err(_) => {} // No debería ocurrir
                                   }
                              }
                         },
                         Err(e) => errors.push(e),
                     }
                 } else {
-                    // Default inherits Object (except Object itself)
+                    // Por defecto hereda de Object (excepto Object mismo)
                     if type_decl.name != "Object" {
                          let obj = context.get_type("Object").unwrap();
                          if let Ok(child) = context.get_type(&type_decl.name) {
@@ -155,7 +158,7 @@ pub fn check_program(program: &Program) -> Result<Context, Vec<SemanticError>> {
                       match context.get_type(parent_name) {
                            Ok(p) => {
                                if p.borrow().kind != TypeKind::Protocol {
-                                   errors.push(SemanticError::GenericError(format!("Protocol {} cannot inherit from basic type {}", proto_decl.name, parent_name)));
+                                   errors.push(SemanticError::GenericError(format!("El protocolo {} no puede heredar del tipo básico {}", proto_decl.name, parent_name)));
                                } else {
                                    if let Ok(child) = context.get_type(&proto_decl.name) {
                                        child.borrow_mut().parent = Some(p.clone());
@@ -171,7 +174,7 @@ pub fn check_program(program: &Program) -> Result<Context, Vec<SemanticError>> {
     }
     
     
-// Check for cycles
+    // Chequear ciclos
     for (name, type_rc) in &context.types {
         let mut curr = type_rc.borrow().parent.clone();
         let mut visited = HashSet::new();
@@ -189,9 +192,9 @@ pub fn check_program(program: &Program) -> Result<Context, Vec<SemanticError>> {
     
     if !errors.is_empty() { return Err(errors); }
 
-    // --- Pass 3: Collect Features (Methods/Attributes) & Global Functions ---
+    // --- Pasada 3: Recolectar Miembros (Métodos/Atributos) y Funciones Globales ---
     
-    // 3a. Global Functions
+    // 3a. Funciones Globales
     for decl in &program.declarations {
         if let Declaration::Function(func_decl) = decl {
             let mut params = Vec::new();
@@ -215,7 +218,7 @@ pub fn check_program(program: &Program) -> Result<Context, Vec<SemanticError>> {
                         Err(e) => { errors.push(e); context.get_type("Object").unwrap() }
                     }
                 },
-                None => context.get_type("Object").unwrap(), // Default return Object? 
+                None => context.get_type("Object").unwrap(), // Retorno por defecto Object? 
             };
             
             if let Err(e) = context.define_function(&func_decl.name, params, ret_type) {
@@ -224,12 +227,12 @@ pub fn check_program(program: &Program) -> Result<Context, Vec<SemanticError>> {
         }
     }
     
-    // 3b. Type Features
+    // 3b. Miembros de Tipos
     for decl in &program.declarations {
          if let Declaration::Type(type_decl) = decl {
              let current_type_rc = context.get_type(&type_decl.name).unwrap();
              
-             // Constructor Params
+             // Parametros del Constructor
              let mut ctor_params = Vec::new();
              for p in &type_decl.params {
                   let p_type = match &p.type_annotation {
@@ -240,7 +243,7 @@ pub fn check_program(program: &Program) -> Result<Context, Vec<SemanticError>> {
              }
              current_type_rc.borrow_mut().params = ctor_params;
 
-             // Attributes
+             // Atributos
              for attr in &type_decl.attributes {
                  let attr_type = match &attr.type_annotation {
                      Some(ann) => match context.resolve_type(ann) {
@@ -249,7 +252,7 @@ pub fn check_program(program: &Program) -> Result<Context, Vec<SemanticError>> {
                      },
                      None => context.get_type("Object").unwrap(),
                  };
-                 // Add attribute to type
+                 // Agregar atributo al tipo
                  if current_type_rc.borrow().attributes.contains_key(&attr.name) {
                      errors.push(SemanticError::AttributeDefined(format!("{}.{}", type_decl.name, attr.name)));
                  } else {
@@ -257,7 +260,7 @@ pub fn check_program(program: &Program) -> Result<Context, Vec<SemanticError>> {
                  }
              }
              
-             // Methods
+             // Métodos
              for method in &type_decl.methods {
                  let mut params = Vec::new();
                  for p in &method.params {
@@ -281,12 +284,35 @@ pub fn check_program(program: &Program) -> Result<Context, Vec<SemanticError>> {
                  if current_type_rc.borrow().methods.contains_key(&method.name) {
                       errors.push(SemanticError::MethodDefined(format!("{}.{}", type_decl.name, method.name)));
                  } else {
-                     // Check override
+                     // Chequear override (sobreescritura)
                      let mut parent = current_type_rc.borrow().parent.clone();
                      while let Some(p) = parent {
                          if let Some(parent_method) = p.borrow().methods.get(&method.name) {
                              if parent_method.params.len() != method_info.params.len() {
-                                 errors.push(SemanticError::SignatureMismatch(format!("{}.{} overrides with different arg count", type_decl.name, method.name)));
+                                 errors.push(SemanticError::SignatureMismatch(format!("{}.{} sobreescribe con diferente cantidad de argumentos", type_decl.name, method.name)));
+                             } else {
+                                // Chequear covarianza de retorno (Impl <= Base)
+                                if !method_info.return_type.borrow().conforms_to(&parent_method.return_type) {
+                                     errors.push(SemanticError::SignatureMismatch(format!(
+                                         "El tipo de retorno de {}.{} ({}) no conforma al del padre ({})", 
+                                         type_decl.name, method.name, 
+                                         method_info.return_type.borrow().name, 
+                                         parent_method.return_type.borrow().name
+                                     )));
+                                }
+                                
+                                // Chequear contravarianza de argumentos (Base <= Impl)
+                                for (i, (_, param_type)) in method_info.params.iter().enumerate() {
+                                    let (_, parent_param_type) = &parent_method.params[i];
+                                    if !parent_param_type.borrow().conforms_to(param_type) {
+                                         errors.push(SemanticError::SignatureMismatch(format!(
+                                             "El argumento {} de {}.{} ({}) no conforma al del padre ({}) (se requiere contravarianza)", 
+                                             i, type_decl.name, method.name, 
+                                             param_type.borrow().name, 
+                                             parent_param_type.borrow().name
+                                         )));
+                                    }
+                                }
                              }
                          }
                          parent = p.borrow().parent.clone();
@@ -321,11 +347,11 @@ pub fn check_program(program: &Program) -> Result<Context, Vec<SemanticError>> {
     
     if !errors.is_empty() { return Err(errors); }
 
-    // --- Pass 4: Check Bodies (Functions & Methods) ---
+    // --- Pasada 4: Chequear Cuerpos (Funciones y Métodos) ---
     
-    // Check Global Expression
+    // Chequear Expresión Global
     {
-        // Wrap scope in Rc for sharing
+        // Envolver scope en Rc para compartir
         let scope = Rc::new(Scope::new());
         let mut checker = BodyChecker::new(&context, scope);
         if let Err(mut body_errors) = checker.check_expr(&program.expr) {
@@ -333,11 +359,11 @@ pub fn check_program(program: &Program) -> Result<Context, Vec<SemanticError>> {
         }
     }
     
-    // Check Global Functions
+    // Chequear Funciones Globales
     for decl in &program.declarations {
          if let Declaration::Function(func) = decl {
              let scope = Rc::new(Scope::new());
-             // Add params to scope
+             // Agregar parámetros al scope
              let (params_types, _) = context.functions.get(&func.name).unwrap();
              for (i, p_decl) in func.params.iter().enumerate() {
                  let t = params_types[i].clone();
@@ -351,8 +377,8 @@ pub fn check_program(program: &Program) -> Result<Context, Vec<SemanticError>> {
          }
     }
     
-    // TODO: Check Type Methods bodies and Attribute initializations
-    // Requires visiting checking TypeDecl bodies again and setting `current_type`
+    // TODO: Chequear cuerpos de métodos de tipos e inicializaciones de atributos
+    // Requiere visitar TypeDecl nuevamente y establecer `current_type`
 
     if !errors.is_empty() { return Err(errors); }
 
@@ -370,7 +396,7 @@ impl<'a> BodyChecker<'a> {
         BodyChecker { context, scope, current_type: None }
     }
     
-    // Return resolved type on success
+    // Retorna el tipo resuelto si tiene éxito
     fn check_expr(&mut self, expr_spanned: &Spanned<Expr>) -> Result<Rc<RefCell<Type>>, Vec<SemanticError>> {
         match &expr_spanned.node {
             Expr::Number(_) => Ok(self.context.get_type("Number").unwrap()),
@@ -386,7 +412,7 @@ impl<'a> BodyChecker<'a> {
                 } else if let Some(t) = self.scope.find_variable(name) {
                     Ok(t)
                 } else {
-                    // Constant?
+                    // ¿Constante?
                      if name == "PI" || name == "E" {
                           Ok(self.context.get_type("Number").unwrap())
                      } else {
@@ -418,7 +444,7 @@ impl<'a> BodyChecker<'a> {
                         if matches!(op, Op::Eq | Op::Neq) {
                              Ok(self.context.get_type("Boolean").unwrap())
                         } else {
-                             Err(vec![SemanticError::TypeMismatch { expected: "Math/Logic operands".to_string(), found: format!("{} {:?}", l.borrow().name, op) } ])
+                             Err(vec![SemanticError::GenericError(format!("Operation {:?} is not defined for types {} and {}", op, l.borrow().name, r.borrow().name))])
                         }
                    }
                } else {
@@ -441,7 +467,7 @@ impl<'a> BodyChecker<'a> {
             Expr::Let { bindings, body } => {
                 let current_scope = Rc::new(Scope::new_child(self.scope.clone()));
                 for (name, type_ann, expr_span) in bindings {
-                    // Assuming let bindings see previous bindings in same block
+                    // Asumiendo que las declaraciones let ven las declaraciones anteriores en el mismo bloque
                     let mut temp_checker = BodyChecker::new(self.context, current_scope.clone());
                     let t_expr = temp_checker.check_expr(expr_span)?;
                     

@@ -27,6 +27,8 @@ impl Scope {
         }
     }
 
+    /// Define una variable en el ámbito actual.
+    /// Retorna `true` si se definió con éxito, `false` si ya existía.
     pub fn define_variable(&self, name: String, type_info: Rc<RefCell<Type>>) -> bool {
         let mut vars = self.variables.borrow_mut();
         if vars.contains_key(&name) {
@@ -36,6 +38,7 @@ impl Scope {
         true
     }
 
+    /// Busca una variable recursivamente en los ámbitos padres.
     pub fn find_variable(&self, name: &str) -> Option<Rc<RefCell<Type>>> {
         if let Some(t) = self.variables.borrow().get(name) {
             return Some(t.clone());
