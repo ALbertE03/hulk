@@ -676,6 +676,23 @@ impl<'a> BodyChecker<'a> {
                      Err(vec![SemanticError::VariableNotFound(target.clone())])
                  }
              },
+             Expr::AttributeAssignment { obj, attribute, value } => {
+                 let t_obj = self.check_expr(obj)?;
+                 let t_val = self.check_expr(value)?;
+                 // Buscar atributo en la jerarquía de tipos
+                 let mut curr = Some(t_obj.clone());
+                 while let Some(c) = curr {
+                     if let Some(attr_type) = c.borrow().attributes.get(attribute) {
+                         if !conforms_to(t_val.clone(), attr_type.clone()) {
+                             return Err(vec![SemanticError::TypeMismatch{ expected: attr_type.borrow().name.clone(), found: t_val.borrow().name.clone() }]);
+                         }
+                         return Ok(t_val);
+                     }
+                     curr = c.borrow().parent.clone();
+                 }
+                 // Atributo no encontrado en info de tipo — permitir como Object (fallback)
+                 Ok(t_val)
+             },
              Expr::While { cond, body } => {
                   let t_cond = self.check_expr(cond)?;
                   // Accept Boolean or Object (Object may be Boolean at runtime)

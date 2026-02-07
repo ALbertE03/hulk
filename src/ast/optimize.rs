@@ -41,6 +41,10 @@ fn collect_assigned_vars(expr: &Expr, out: &mut std::collections::HashSet<String
             out.insert(target.clone());
             collect_assigned_vars(&value.node, out);
         }
+        Expr::AttributeAssignment { obj, value, .. } => {
+            collect_assigned_vars(&obj.node, out);
+            collect_assigned_vars(&value.node, out);
+        }
         Expr::Block(exprs) => {
             for e in exprs { collect_assigned_vars(&e.node, out); }
         }
@@ -332,6 +336,15 @@ fn optimize_expr(expr: Spanned<Expr>, interner: &mut StringInterner, env: &Const
         Expr::Assignment { target, value } => {
             Expr::Assignment {
                 target: interner.intern(target),
+                value: Box::new(optimize_expr(*value, interner, env)),
+            }
+        }
+        
+        // AttributeAssignment
+        Expr::AttributeAssignment { obj, attribute, value } => {
+            Expr::AttributeAssignment {
+                obj: Box::new(optimize_expr(*obj, interner, env)),
+                attribute: interner.intern(attribute),
                 value: Box::new(optimize_expr(*value, interner, env)),
             }
         }

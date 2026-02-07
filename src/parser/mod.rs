@@ -357,14 +357,18 @@ impl Parser {
                 Ok(Spanned::new(Expr::As(Box::new(left), ty), pos))
             }
             Token::DestructAssign => {
-                // x := expr
+                // x := expr  OR  obj.attr := expr
                 if let Expr::Identifier(name) = &left.node {
                     let right = self.parse_spanned_expr(Precedence::Assignment)?;
                     let pos_start = left.pos.clone();
                     Ok(Spanned::new(Expr::Assignment { target: name.clone(), value: Box::new(right) }, pos_start))
+                } else if let Expr::AttributeAccess { obj, attribute } = left.node {
+                    let right = self.parse_spanned_expr(Precedence::Assignment)?;
+                    let pos_start = left.pos.clone();
+                    Ok(Spanned::new(Expr::AttributeAssignment { obj, attribute, value: Box::new(right) }, pos_start))
                 } else {
                     Err(ParseError::UnexpectedToken {
-                        expected: "identifier".to_string(),
+                        expected: "identifier or attribute access".to_string(),
                         found: format!("{:?}", left.node),
                         pos: left.pos,
                     })

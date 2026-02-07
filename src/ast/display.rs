@@ -169,6 +169,7 @@ impl fmt::Display for Expr {
                 write!(f, " in {}", body.node)
             },
             Expr::Assignment { target, value } => write!(f, "{} := {}", target, value.node),
+            Expr::AttributeAssignment { obj, attribute, value } => write!(f, "{}.{} := {}", obj.node, attribute, value.node),
             Expr::Call { func, args } => {
                 write!(f, "{}(", func)?;
                 for (i, arg) in args.iter().enumerate() {

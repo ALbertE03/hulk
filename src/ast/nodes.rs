@@ -171,6 +171,13 @@ pub enum Expr {
         value: Box<Spanned<Expr>>,
     },
 
+    /// Asignación a atributo: self.attr := expr
+    AttributeAssignment {
+        obj: Box<Spanned<Expr>>,
+        attribute: String,
+        value: Box<Spanned<Expr>>,
+    },
+
     // --- Funciones y tipos ---
     Call {
         func: String,

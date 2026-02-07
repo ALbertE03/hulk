@@ -21,6 +21,12 @@ protocol NumberTransform {
     invoke(x: Number): Number;
 }
 
+// ─── Iterable protocol ──────────────────────────────────────
+protocol Iterable {
+    next(): Boolean;
+    get_current(): Number;
+}
+
 // ─── Base class: Animal (level 1) ───────────────────────────
 type Animal(name: String, legs: Number) {
     name = name;
@@ -86,6 +92,20 @@ type Greeter(prefix: String) {
     invoke(name: String): String => self.prefix @ ", " @ name @ "!";
 }
 
+// ─── Range type (implements Iterable protocol) ──────────────
+type Range(min: Number, max: Number) {
+    min: Number = min;
+    max: Number = max;
+    current: Number = min - 1;
+
+    next(): Boolean => {
+        self.current := self.current + 1;
+        self.current < self.max;
+    };
+
+    get_current(): Number => self.current;
+}
+
 // ─── Macros (def) with different parameter types ────────────
 def double(x: Number): Number => x * 2;
 
@@ -99,6 +119,8 @@ def is_positive(x: Number): Boolean => x > 0;
 
 // ─── Utility functions ──────────────────────────────────────
 function separator() => print("────────────────────────────────");
+
+function range(min: Number, max: Number): Range => new Range(min, max);
 
 function abs(x: Number): Number => if (x < 0) (0 - x) else x;
 
@@ -379,6 +401,41 @@ function repeat_str(s: String, n: Number): String =>
         print(rex.describe());
         print(luna.describe());
         print(tweety.describe());
+
+        separator();
+
+        // === Section 14: Iterables (Range with next/current) ===
+        print("--- Iterables ---");
+
+        // Crear un rango iterable [0, 5)
+        let r = range(0, 5) in {
+            print("Range(0, 5):");
+            // Transpilación manual del for-loop usando el protocolo Iterable
+            while (r.next()) {
+                let x = r.get_current() in
+                    print(x);
+            };
+        };
+
+        // Sumar usando iterable: 1 + 2 + ... + 10 = 55
+        let total = 0 in {
+            let r2 = range(1, 11) in
+                while (r2.next())
+                    total := total + r2.get_current();
+            print("Sum 1..10 =" @@ total);
+        };
+
+        // Contar pares en rango [0, 20)
+        let pares = 0 in {
+            let r3 = range(0, 20) in
+                while (r3.next()) {
+                    let val = r3.get_current() in
+                        if (val % 2 == 0)
+                            pares := pares + 1
+                        else 0;
+                };
+            print("Pares en [0,20):" @@ pares);
+        };
 
         separator();
         print("=== ALL TESTS COMPLETE ===");

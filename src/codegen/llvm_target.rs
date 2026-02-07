@@ -998,6 +998,29 @@ fn gen_expr(ctx: &mut Ctx, expr: &Spanned<Expr>) -> String {
             v
         }
 
+        // ── Asignación a atributo (obj.attr := expr) ────────────────────────
+        Expr::AttributeAssignment { obj, attribute, value } => {
+            let v = gen_expr(ctx, value);
+            // Determinar la clase del objeto
+            let obj_val = gen_expr(ctx, obj);
+            let op = ctx.decode_ptr(&obj_val, "i8*");
+            let cls_name = resolve_obj_class_from_expr(ctx, &obj.node);
+            if let Some(cls) = cls_name {
+                if let Some(layout) = ctx.classes.get(&cls) {
+                    if let Some(&idx) = layout.attr_indices.get(attribute.as_str()) {
+                        let sn = layout.struct_name.clone();
+                        let cast = ctx.tmp();
+                        ctx.emit(&format!("{} = bitcast i8* {} to {}*", cast, op, sn));
+                        let gep = ctx.tmp();
+                        ctx.emit(&format!("{} = getelementptr inbounds {}, {}* {}, i32 0, i32 {}",
+                            gep, sn, sn, cast, idx));
+                        ctx.emit(&format!("store double {}, double* {}", v, gep));
+                    }
+                }
+            }
+            v
+        }
+
         // ── Bloque ───────────────────────────────────────────────────────────
         Expr::Block(exprs) => {
             let mut last = "0.0".to_string();
@@ -1706,6 +1729,10 @@ fn collect_free_vars_inner(expr: &Expr, bound: &[String], free: &mut Vec<String>
         }
         Expr::Assignment { target, value } => {
             if !bound.contains(target) { free.push(target.clone()); }
+            collect_free_vars_inner(&value.node, bound, free);
+        }
+        Expr::AttributeAssignment { obj, value, .. } => {
+            collect_free_vars_inner(&obj.node, bound, free);
             collect_free_vars_inner(&value.node, bound, free);
         }
         Expr::Call { args, .. } => {

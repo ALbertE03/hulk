@@ -200,6 +200,13 @@ impl MacroExpansionContext {
                 value: Box::new(self.expand_expr(*value)),
             },
 
+            // AttributeAssignment: expandir obj y value
+            Expr::AttributeAssignment { obj, attribute, value } => Expr::AttributeAssignment {
+                obj: Box::new(self.expand_expr(*obj)),
+                attribute,
+                value: Box::new(self.expand_expr(*value)),
+            },
+
             // Lambda: expandir body
             Expr::Lambda {
                 params,
@@ -349,6 +356,15 @@ impl MacroExpansionContext {
                 };
                 Expr::Assignment {
                     target: new_target,
+                    value: Box::new(self.apply_substitutions(*value)),
+                }
+            }
+
+            // Asignación a atributo: sustituir obj y value
+            Expr::AttributeAssignment { obj, attribute, value } => {
+                Expr::AttributeAssignment {
+                    obj: Box::new(self.apply_substitutions(*obj)),
+                    attribute,
                     value: Box::new(self.apply_substitutions(*value)),
                 }
             }
