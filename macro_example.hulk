@@ -1,0 +1,22 @@
+
+def swap(@a: Object, @b: Object) => 
+    let temp = a in {
+        a := b;
+        b := temp;
+    };
+
+function main() => {
+    let x = 10, 
+        y = 20 
+    in {
+        print("Antes de swap:");
+        print(x);
+        print(y);
+        
+        swap(x, y);
+        
+        print("Después de swap:");
+        print(x);
+        print(y);
+    };
+};

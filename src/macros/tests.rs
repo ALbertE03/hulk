@@ -2,7 +2,7 @@ use super::*;
 use crate::ast::nodes::*;
 use crate::parser::Parser;
 
-// Helper para crear Spanned (usando Position de utils)
+// Helper para crear Spanned 
 fn span<T>(node: T, line: usize, column: usize) -> Spanned<T> {
     Spanned {
         node,
@@ -71,10 +71,9 @@ fn test_expand_simple_macro_call() {
     let program = parser.parse_program().unwrap();
     
     let mut ctx = MacroExpansionContext::new();
-    let _expanded = ctx.expand_program(program);
+    let expanded = ctx.expand_program(program);
     
-    // El programa expandido debe tener la macro aplicada
-    // (Nota: la implementación actual es stub, este test fallará hasta implementar)
+    // La macro debe estar registrada
     assert!(ctx.macros.contains_key("id"));
 }
 

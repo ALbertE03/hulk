@@ -71,11 +71,21 @@ impl MacroExpansionContext {
             }
         }
 
-        // Fase 2: Expandir expresiones
+        // Fase 2: Expandir expresiones en el cuerpo principal
         let expanded_expr = self.expand_expr(program.expr);
 
+        // Fase 3: Expandir expresiones dentro de las funciones
+        let fully_expanded_decls = non_macro_decls.into_iter().map(|decl| {
+            if let Declaration::Function(mut func_decl) = decl {
+                func_decl.body = self.expand_expr(func_decl.body);
+                Declaration::Function(func_decl)
+            } else {
+                decl
+            }
+        }).collect();
+
         Program {
-            declarations: non_macro_decls,
+            declarations: fully_expanded_decls,
             expr: expanded_expr,
         }
     }
@@ -330,7 +340,108 @@ impl MacroExpansionContext {
                     Expr::Identifier(name)
                 }
             }
-            // TODO: Recursivamente aplicar a todas las subexpresiones
+            
+            // Asignación: sustituir tanto target como value
+            Expr::Assignment { target, value } => {
+                let new_target = if let Some(sub) = self.substitutions.get(&target) {
+                    sub.clone()
+                } else {
+                    target
+                };
+                Expr::Assignment {
+                    target: new_target,
+                    value: Box::new(self.apply_substitutions(*value)),
+                }
+            }
+
+            // Recursivamente aplicar a todas las subexpresiones
+            Expr::Binary(left, op, right) => Expr::Binary(
+                Box::new(self.apply_substitutions(*left)),
+                op,
+                Box::new(self.apply_substitutions(*right)),
+            ),
+            Expr::Unary(op, operand) => Expr::Unary(op, Box::new(self.apply_substitutions(*operand))),
+            Expr::Call { func, args } => Expr::Call {
+                func, // No sustituimos nombres de funciones por ahora
+                args: args.into_iter().map(|a| self.apply_substitutions(a)).collect(),
+            },
+            Expr::Let { bindings, body } => {
+                let substituted_bindings = bindings
+                    .into_iter()
+                    .map(|(name, ty, init)| {
+                        // Nota: No sustituimos nombres de variables definidas en let
+                        // porque son locales a la macro/bloque. 
+                        // Solo sustituimos en la inicialización
+                        (name, ty, self.apply_substitutions(init))
+                    })
+                    .collect();
+                Expr::Let {
+                    bindings: substituted_bindings,
+                    body: Box::new(self.apply_substitutions(*body)),
+                }
+            }
+            Expr::Block(exprs) => {
+                Expr::Block(exprs.into_iter().map(|e| self.apply_substitutions(e)).collect())
+            },
+            Expr::If { cond, then_expr, else_expr } => Expr::If {
+                cond: Box::new(self.apply_substitutions(*cond)),
+                then_expr: Box::new(self.apply_substitutions(*then_expr)),
+                else_expr: Box::new(self.apply_substitutions(*else_expr)),
+            },
+            Expr::While { cond, body } => Expr::While {
+                cond: Box::new(self.apply_substitutions(*cond)),
+                body: Box::new(self.apply_substitutions(*body)),
+            },
+            Expr::For { var, iterable, body } => Expr::For {
+                var, // Variable local del for, no se sustituye
+                iterable: Box::new(self.apply_substitutions(*iterable)),
+                body: Box::new(self.apply_substitutions(*body)),
+            },
+            
+            // Otros casos recursivos
+            Expr::MethodCall { obj, method, args } => Expr::MethodCall {
+                obj: Box::new(self.apply_substitutions(*obj)),
+                method,
+                args: args.into_iter().map(|a| self.apply_substitutions(a)).collect(),
+            },
+            Expr::AttributeAccess { obj, attribute } => Expr::AttributeAccess {
+                obj: Box::new(self.apply_substitutions(*obj)),
+                attribute,
+            },
+            Expr::Instantiation { ty, args } => Expr::Instantiation {
+                ty,
+                args: args.into_iter().map(|a| self.apply_substitutions(a)).collect(),
+            },
+            Expr::VectorLiteral(elements) => Expr::VectorLiteral(
+                elements.into_iter().map(|e| self.apply_substitutions(e)).collect()
+            ),
+            Expr::VectorGenerator { expr, var, iterable } => Expr::VectorGenerator {
+                expr: Box::new(self.apply_substitutions(*expr)),
+                var,
+                iterable: Box::new(self.apply_substitutions(*iterable)),
+            },
+            Expr::Indexing { obj, index } => Expr::Indexing {
+                obj: Box::new(self.apply_substitutions(*obj)),
+                index: Box::new(self.apply_substitutions(*index)),
+            },
+            Expr::Is(expr, ty) => Expr::Is(Box::new(self.apply_substitutions(*expr)), ty),
+            Expr::As(expr, ty) => Expr::As(Box::new(self.apply_substitutions(*expr)), ty),
+            Expr::Lambda { params, return_type, body } => Expr::Lambda {
+                params,
+                return_type,
+                body: Box::new(self.apply_substitutions(*body)),
+            },
+            
+            // Math functions
+            Expr::Sqrt(e) => Expr::Sqrt(Box::new(self.apply_substitutions(*e))),
+            Expr::Sin(e) => Expr::Sin(Box::new(self.apply_substitutions(*e))),
+            Expr::Cos(e) => Expr::Cos(Box::new(self.apply_substitutions(*e))),
+            Expr::Exp(e) => Expr::Exp(Box::new(self.apply_substitutions(*e))),
+            Expr::Log(base, x) => Expr::Log(
+                Box::new(self.apply_substitutions(*base)),
+                Box::new(self.apply_substitutions(*x)),
+            ),
+            
             other => other,
         };
 
