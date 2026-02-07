@@ -1,14 +1,3 @@
-//! Módulo de expansión de macros para HULK
-//!
-//! Este módulo implementa la expansión de macros en tiempo de compilación.
-//! Las macros son transpiladas a código HULK estándar antes de la fase semántica.
-//!
-//! Características principales:
-//! - Variable hygiene (renombrado automático)
-//! - Argumentos simbólicos (@symbol)
-//! - Variable placeholders ($symbol)
-//! - Body arguments (*expr)
-//! - Pattern matching estructural
 
 #[cfg(test)]
 mod tests;

@@ -4,8 +4,8 @@ Este módulo implementa la fase de análisis semántico del compilador HULK. Su 
 
 ## Estructura del Módulo
 
-- **`mod.rs`**: Contiene la lógica principal del chequeo semántico (`check_program`) y el visitante de expresiones (`BodyChecker`).
-- **`types.rs`**: Define el sistema de tipos (`Type`, `TypeKind`, `MethodInfo`). Incluye lógica crucial como la verificación de conformidad de tipos (`conforms_to`) y el cálculo del ancestro común más bajo (`lowest_common_ancestor`).
+- **`mod.rs`**: Contiene la lógica principal del chequeo semántico (`check_program`) y el visitante de expresiones (`BodyChecker`). (~350 líneas)
+- **`types.rs`**: Define el sistema de tipos (`Type`, `TypeKind`, `MethodInfo`). Incluye lógica crucial como la verificación de conformidad de tipos (`conforms_to`) y el cálculo del ancestro común más bajo (`lowest_common_ancestor`). (~175 líneas)
 - **`scope.rs`**: Implementa la tabla de símbolos para el manejo de variables y su visibilidad. Soporta anidamiento de ámbitos (scopes).
 - **`tests.rs`**: Suite de pruebas unitarias que verifica diversos escenarios semánticos.
 
@@ -44,10 +44,25 @@ El sistema de tipos soporta:
 - **Herencia Simple**: Cada clase tiene un único padre.
 - **Polimorfismo**: Verificado mediante `conforms_to`.
 
+## Contexto Semántico (`Context`)
+
+La función `check_program` retorna un `Context` que contiene la información de tipos resuelta, utilizada por el codegen:
+
+```rust
+pub struct Context {
+    pub types: HashMap<String, TypeInfo>,
+    pub functions: HashMap<String, FunctionInfo>,
+    pub protocols: HashMap<String, ProtocolInfo>,
+}
+```
+
+Este contexto es pasado directamente al generador de código LLVM IR.
+
 ## Errores
 
-Los errores semánticos se definen en `src/errors/semantic.rs` y cubren casos como:
+Los errores semánticos se definen en `src/errors/` y cubren casos como:
 - `TypeMismatch`: Incompatibilidad de tipos.
-- `methodNotFound`: Llamada a método inexistente.
+- `MethodNotFound`: Llamada a método inexistente.
 - `CircularInheritance`: Ciclos en la jerarquía de clases.
 - `VariableNotFound`: Uso de variables no declaradas.
+- `DuplicateDefinition`: Redefinición de tipos, métodos o atributos.

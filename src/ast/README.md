@@ -707,11 +707,15 @@ Expr::Let { bindings, body } => {
     let mut new_env = env.clone();
     let mut optimized_bindings = Vec::new();
     
+    // Detectar variables mutadas con := en el body
+    let mut mutated = HashSet::new();
+    collect_assigned_vars(&body.node, &mut mutated);
+    
     for (name, type_ann, init) in bindings {
         let opt_init = optimize_expr(init, interner, &new_env);
         
-        // Si la inicialización es constante, agregar al entorno
-        if is_constant(&opt_init.node) {
+        // Solo propagar si es constante Y no se muta con :=
+        if is_constant(&opt_init.node) && !mutated.contains(&name) {
             new_env.insert(name.clone(), opt_init.node.clone());
         }
         
@@ -726,6 +730,9 @@ Expr::Let { bindings, body } => {
         body: Box::new(opt_body),
     }
 }
+```
+
+> **⚠️ Nota sobre variables mutables**: La función `collect_assigned_vars()` escanea recursivamente el body buscando nodos `Expr::Assign(name, _)` (`:=`). Las variables encontradas se excluyen de la propagación de constantes para evitar que el optimizador sustituya valores que serán modificados en runtime (ej: variables usadas con `swap`).
 ```
 
 **Uso de identificadores:**
@@ -984,6 +991,53 @@ fn is_constant(expr: &Expr) -> bool {
 
 ---
 
+### Detección de Variables Mutables (`collect_assigned_vars`)
+
+Escanea recursivamente el AST buscando nodos `Expr::Assign(name, _)` (operador `:=`). Las variables encontradas se excluyen de la propagación de constantes.
+
+```rust
+fn collect_assigned_vars(expr: &Expr, set: &mut HashSet<String>) {
+    match expr {
+        Expr::Assign(name, val) => {
+            set.insert(name.clone());
+            collect_assigned_vars(&val.node, set);
+        }
+        Expr::Block(stmts) => {
+            for s in stmts { collect_assigned_vars(&s.node, set); }
+        }
+        Expr::If { cond, then_expr, else_expr } => {
+            collect_assigned_vars(&cond.node, set);
+            collect_assigned_vars(&then_expr.node, set);
+            collect_assigned_vars(&else_expr.node, set);
+        }
+        Expr::While { cond, body } => {
+            collect_assigned_vars(&cond.node, set);
+            collect_assigned_vars(&body.node, set);
+        }
+        // ... recorre todos los nodos recursivamente
+        _ => {}
+    }
+}
+```
+
+**¿Por qué es necesario?** Sin esta función, el optimizador propagaría el valor inicial de una variable incluso si luego se modifica con `:=`, produciendo resultados incorrectos:
+
+```hulk
+// SIN collect_assigned_vars (BUG):
+let a = 10 in {
+    a := 20;   // se ignora
+    print(a);  // imprimiría 10 (propagó el valor original)
+}
+
+// CON collect_assigned_vars (CORRECTO):
+let a = 10 in {
+    a := 20;
+    print(a);  // imprime 20 (no propagó porque 'a' está en mutated)
+}
+```
+
+---
+
 ### Pipeline de Optimización
 
 ```
@@ -1036,11 +1090,13 @@ let x = 8 in 8
 - ❌ Expresiones con variables no constantes
 - ❌ Llamadas a funciones (podría haber side effects)
 - ❌ Bucles (incluso con condición constante true, podría no terminar)
+- ❌ Variables mutadas con `:=` (detectadas por `collect_assigned_vars`)
 
 **Seguridad:**
 - ✅ Las optimizaciones preservan semántica
 - ✅ No optimiza si no está seguro
 - ✅ Errores en runtime se mantienen (ej: división por cero)
+- ✅ Variables reasignadas con `:=` no se propagan
 
 **Performance:**
 - Tiempo: O(n) donde n = nodos del AST

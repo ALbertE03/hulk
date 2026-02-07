@@ -1,4 +1,4 @@
-pub mod mips_target;
+pub mod llvm_target;
 
 #[cfg(test)]
 mod tests;

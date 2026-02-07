@@ -33,6 +33,56 @@ fn is_constant(expr: &Expr) -> bool {
     matches!(expr, Expr::Number(_) | Expr::Boolean(_) | Expr::String(_) | Expr::PI | Expr::E)
 }
 
+/// Recursively collects all variable names that appear as targets of `:=` assignments.
+/// These variables are mutable and must NOT be constant-propagated.
+fn collect_assigned_vars(expr: &Expr, out: &mut std::collections::HashSet<String>) {
+    match expr {
+        Expr::Assignment { target, value } => {
+            out.insert(target.clone());
+            collect_assigned_vars(&value.node, out);
+        }
+        Expr::Block(exprs) => {
+            for e in exprs { collect_assigned_vars(&e.node, out); }
+        }
+        Expr::Let { bindings, body } => {
+            for (_, _, init) in bindings { collect_assigned_vars(&init.node, out); }
+            collect_assigned_vars(&body.node, out);
+        }
+        Expr::If { cond, then_expr, else_expr } => {
+            collect_assigned_vars(&cond.node, out);
+            collect_assigned_vars(&then_expr.node, out);
+            collect_assigned_vars(&else_expr.node, out);
+        }
+        Expr::While { cond, body } => {
+            collect_assigned_vars(&cond.node, out);
+            collect_assigned_vars(&body.node, out);
+        }
+        Expr::For { iterable, body, .. } => {
+            collect_assigned_vars(&iterable.node, out);
+            collect_assigned_vars(&body.node, out);
+        }
+        Expr::Binary(l, _, r) => {
+            collect_assigned_vars(&l.node, out);
+            collect_assigned_vars(&r.node, out);
+        }
+        Expr::Unary(_, e) => collect_assigned_vars(&e.node, out),
+        Expr::Call { args, .. } | Expr::BaseCall { args } => {
+            for a in args { collect_assigned_vars(&a.node, out); }
+        }
+        Expr::MethodCall { obj, args, .. } => {
+            collect_assigned_vars(&obj.node, out);
+            for a in args { collect_assigned_vars(&a.node, out); }
+        }
+        Expr::Lambda { body, .. } => collect_assigned_vars(&body.node, out),
+        Expr::Match { expr: e, cases, default } => {
+            collect_assigned_vars(&e.node, out);
+            for c in cases { collect_assigned_vars(&c.expr.node, out); }
+            if let Some(d) = default { collect_assigned_vars(&d.node, out); }
+        }
+        _ => {}
+    }
+}
+
 /// Optimiza un programa completo aplicando constant folding, constant propagation, dead code elimination y string interning.
 pub fn optimize_program(program: Program) -> Program {
     let mut interner = StringInterner::new();
@@ -244,16 +294,24 @@ fn optimize_expr(expr: Spanned<Expr>, interner: &mut StringInterner, env: &Const
             Expr::Block(exprs.into_iter().map(|e| optimize_expr(e, interner, env)).collect())
         }
         
-        // Let con CONSTANT PROPAGATION
+        // Let con CONSTANT PROPAGATION (respeta variables mutadas por :=)
         Expr::Let { bindings, body } => {
+            // Primero, escanear el body para encontrar variables reasignadas con :=
+            let mut mutated = std::collections::HashSet::new();
+            collect_assigned_vars(&body.node, &mut mutated);
+
             let mut new_env = env.clone();
             let new_bindings: Vec<_> = bindings.into_iter().map(|(name, ty, init)| {
                 // Optimizar la inicialización con el entorno actual
                 let opt_init = optimize_expr(init, interner, &new_env);
                 
-                // Si el valor es constante, agregarlo al entorno para propagación
-                if is_constant(&opt_init.node) {
+                // Solo propagar si el valor es constante Y la variable no se reasigna
+                if is_constant(&opt_init.node) && !mutated.contains(&name) {
                     new_env.insert(name.clone(), opt_init.node.clone());
+                } else {
+                    // Si la variable es mutada, removerla del env por si una
+                    // definición exterior la había registrado
+                    new_env.remove(&name);
                 }
                 
                 (

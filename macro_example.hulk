@@ -1,22 +1,295 @@
+// ═══════════════════════════════════════════════════════════════
+//  HULK Comprehensive Test — Zoo Management System
+//  Tests: classes, deep inheritance (3+ levels), protocols,
+//         methods, attributes, base(), is/as, vectors,
+//         for loops, while, let, lambdas/closures, match,
+//         string concat, math builtins, rand(), assignments
+// ═══════════════════════════════════════════════════════════════
 
-def swap(@a: Object, @b: Object) => 
-    let temp = a in {
-        a := b;
-        b := temp;
+// ─── Protocol: printable contract ───────────────────────────
+protocol Describable {
+    describe(): String;
+}
+
+// ─── Base class: Animal (level 1) ───────────────────────────
+type Animal(name: String, legs: Number) {
+    name = name;
+    legs = legs;
+
+    greet() => "I am " @ self.name @ " with " @@ self.legs @@ " legs";
+
+    is_quadruped() => self.legs == 4;
+}
+
+// ─── Mid class: Mammal (level 2 — inherits Animal) ─────────
+type Mammal(name: String, legs: Number, warm: Boolean) inherits Animal(name, legs) {
+    warm = warm;
+
+    body_temp() => if (self.warm) "warm-blooded" else "cold-blooded";
+}
+
+// ─── Leaf class: Dog (level 3 — inherits Mammal) ───────────
+type Dog(name: String, breed: String) inherits Mammal(name, 4, true) {
+    breed = breed;
+
+    bark() => self.name @ " says: Woof!";
+
+    describe() => self.name @ " the " @ self.breed;
+}
+
+// ─── Leaf class: Cat (level 3 — inherits Mammal) ───────────
+type Cat(name: String, indoor: Boolean) inherits Mammal(name, 4, true) {
+    indoor = indoor;
+
+    meow() => self.name @ " says: Meow!";
+
+    describe() => if (self.indoor)
+        self.name @ " (indoor cat)"
+    else
+        self.name @ " (outdoor cat)";
+}
+
+// ─── Separate hierarchy: Bird (level 2) ─────────────────────
+type Bird(name: String, can_fly: Boolean) inherits Animal(name, 2) {
+    can_fly = can_fly;
+
+    describe() => if (self.can_fly)
+        self.name @ " can fly!"
+    else
+        self.name @ " cannot fly";
+}
+
+// ─── Utility functions ──────────────────────────────────────
+function separator() => print("────────────────────────────────");
+
+function abs(x: Number): Number => if (x < 0) (0 - x) else x;
+
+function max(a: Number, b: Number): Number => if (a > b) a else b;
+
+function min(a: Number, b: Number): Number => if (a < b) a else b;
+
+function clamp(val: Number, lo: Number, hi: Number): Number =>
+    min(max(val, lo), hi);
+
+function repeat_str(s: String, n: Number): String =>
+    let result = "" in {
+        let i = 0 in
+            while (i < n) {
+                result := result @ s;
+                i := i + 1;
+            };
+        result;
     };
 
-function main() => {
-    let x = 10, 
-        y = 20 
+// ─── Main program ───────────────────────────────────────────
+{
+    // === Section 1: Object creation & basic methods ===
+    print("=== ZOO MANAGEMENT SYSTEM ===");
+    separator();
+
+    let rex   = new Dog("Rex", "Labrador"),
+        milo  = new Dog("Milo", "Beagle"),
+        luna  = new Cat("Luna", true),
+        simba = new Cat("Simba", false),
+        tweety = new Bird("Tweety", true),
+        kiwi   = new Bird("Kiwi", false)
     in {
-        print("Antes de swap:");
-        print(x);
-        print(y);
-        
-        swap(x, y);
-        
-        print("Después de swap:");
-        print(x);
-        print(y);
+        // ── Greetings (inherited from Animal) ──
+        print("--- Animal Greetings ---");
+        print(rex.greet());
+        print(luna.greet());
+        print(tweety.greet());
+
+        separator();
+
+        // ── Dog-specific methods ──
+        print("--- Dog Actions ---");
+        print(rex.bark());
+        print(milo.bark());
+        print(rex.describe());
+        print(milo.describe());
+
+        separator();
+
+        // ── Cat-specific methods ──
+        print("--- Cat Actions ---");
+        print(luna.meow());
+        print(simba.meow());
+        print(luna.describe());
+        print(simba.describe());
+
+        separator();
+
+        // ── Bird descriptions ──
+        print("--- Bird Info ---");
+        print(tweety.describe());
+        print(kiwi.describe());
+
+        separator();
+
+        // ── Mammal body temp (from level 2) ──
+        print("--- Mammal Properties ---");
+        print(rex.body_temp());
+        print(luna.body_temp());
+
+        separator();
+
+        // === Section 2: is / as runtime type checks ===
+        print("--- Type Checks (is) ---");
+
+        // Dog is Animal (through Mammal)
+        print("Rex is Animal?");
+        print(rex is Animal);
+
+        // Dog is Mammal
+        print("Rex is Mammal?");
+        print(rex is Mammal);
+
+        // Dog is Dog
+        print("Rex is Dog?");
+        print(rex is Dog);
+
+        // Bird is NOT Mammal
+        print("Tweety is Mammal?");
+        print(tweety is Mammal);
+
+        // Bird IS Animal
+        print("Tweety is Animal?");
+        print(tweety is Animal);
+
+        separator();
+
+        // === Section 3: Vectors and iteration ===
+        print("--- Zoo Census (Vectors) ---");
+
+        let leg_counts = [4, 4, 4, 4, 2, 2] in {
+            // Sum legs using for loop
+            let total_legs = 0 in {
+                for (legs in leg_counts)
+                    total_legs := total_legs + legs;
+
+                print("Total legs in zoo:" @@ total_legs);
+            };
+
+            // Vector generator: double each count
+            let doubled = [x * 2 | x in leg_counts] in {
+                print("Doubled leg counts:");
+                for (d in doubled)
+                    print(d);
+            };
+        };
+
+        separator();
+
+        // === Section 4: Lambdas and closures ===
+        print("--- Lambda & Closure Tests ---");
+
+        // Simple lambda
+        let square = (x: Number) => x * x in
+            print("5 squared =" @@ square(5));
+
+        // Closure capturing outer variable
+        let factor = 3 in
+            let scale = (x: Number) => x * factor in {
+               print("10 scaled by 3 =" @@ scale(10));
+                print("7 scaled by 3 =" @@ scale(7));
+           };
+
+        // Lambda with string operations
+        let greet_fn = (name: String) => "Hello, " @ name @ "!" in {
+           print(greet_fn("World"));
+            print(greet_fn("HULK"));
+        };
+
+        separator();
+
+        // === Section 5: Math builtins ===
+        print("--- Math Functions ---");
+
+        print("PI =" @@ PI);
+        print("E  =" @@ E);
+        print("sqrt(144) =" @@ sqrt(144));
+        print("sin(0) =" @@ sin(0));
+        print("cos(0) =" @@ cos(0));
+        print("exp(1) =" @@ exp(1));
+        print("log(10, 1000) =" @@ log(10, 1000));
+
+        // Random number
+        let r = rand() in {
+            print("Random [0,1):");
+            print(r);
+        };
+
+        separator();
+
+        // === Section 6: Complex control flow ===
+        print("--- Fibonacci (while loop) ---");
+
+        let n = 10 in
+        let a = 0, b = 1 in
+        let i = 0 in {
+            while (i < n) {
+                print(a);
+                let temp = b in {
+                    b := a + b;
+                    a := temp;
+                };
+                i := i + 1;
+            };
+        };
+
+        separator();
+
+        // === Section 7: Nested let + assignments ===
+        print("--- Variable Mutation ---");
+
+        let counter = 0 in {
+            let step = 1 in
+                while (counter < 5) {
+                    print("counter =" @@ counter);
+                    counter := counter + step;
+                    step := step + 1;
+                };
+            print("Final counter =" @@ counter);
+        };
+
+        separator();
+
+        // === Section 8: String operations ===
+        print("--- String Operations ---");
+
+        let first = "HULK",
+            second = "Compiler",
+            version = "2.0"
+        in {
+            print(first @ " " @ second @ " v" @ version);
+            print(first @@ second @@ version);
+
+            let stars = repeat_str("*", 10) in
+                print(stars @ " " @ first @ " " @ stars);
+        };
+
+        separator();
+
+        // === Section 9: Utility functions ===
+        print("--- Utility Functions ---");
+
+        print("abs(-42) =" @@ abs(0 - 42));
+        print("max(10, 20) =" @@ max(10, 20));
+        print("min(10, 20) =" @@ min(10, 20));
+        print("clamp(150, 0, 100) =" @@ clamp(150, 0, 100));
+        print("clamp(-5, 0, 100) =" @@ clamp(0 - 5, 0, 100));
+
+        separator();
+
+        // === Section 10: Quadruped check (inherited method) ===
+        print("--- Is Quadruped? ---");
+        print("Rex (4 legs):");
+        print(rex.is_quadruped());
+        print("Tweety (2 legs):");
+        print(tweety.is_quadruped());
+
+        separator();
+        print("=== ALL TESTS COMPLETE ===");
     };
-};
+}

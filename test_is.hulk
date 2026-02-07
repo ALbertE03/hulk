@@ -1,0 +1,16 @@
+type Animal(name: String) {
+    name = name;
+}
+
+type Dog(name: String, legs: Number) inherits Animal(name) {
+    legs = legs;
+}
+
+{
+    let rex = new Dog("Rex", 4) in {
+        print("rex is Dog:");
+        print(rex is Dog);
+        print("rex is Animal:");
+        print(rex is Animal);
+    };
+}

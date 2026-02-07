@@ -1,0 +1,23 @@
+
+type Box(value: Number) {
+    value = value;
+    get_value() => self.value;
+}
+ type Animal(name: String) {
+     name = name;
+
+     get_name() => self.name;
+ }
+
+ {
+let b = new Box(42) in {
+        print("=== Test 1: Atributo Number ===");
+        print(b.get_value());
+        print("done test 1");
+    }
+let x = new Animal("Rex") in {
+        print("=== Test 2: Atributo String ===");
+        print(x.get_name());
+        print("done test 2");
+    };
+ }

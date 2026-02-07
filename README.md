@@ -1,92 +1,148 @@
-# HULK Compiler
+# HULK Compiler 🚀
 
-Compilador completo para el lenguaje de programación HULK, implementado en Rust. Este proyecto cubre todas las fases clásicas de un compilador moderno: análisis léxico, análisis sintáctico, construcción del AST, expansión de macros, análisis semántico, optimización y generación de código.
+Compilador completo para el lenguaje de programación **HULK**, implementado en Rust. Genera **LLVM IR** que puede compilarse a código nativo para cualquier arquitectura soportada (x86, ARM, RISC-V, etc.). El proyecto cubre todas las fases clásicas de un compilador moderno: análisis léxico, análisis sintáctico, construcción del AST, expansión de macros, análisis semántico, optimización y generación de código LLVM IR.
+
+---
 
 ## Fases del Compilador
 
 ### 1. **Árbol de Sintaxis Abstracta (AST)**
 📂 [`src/ast/`](src/ast/) | 📖 [Documentación detallada](src/ast/README.md)
 
-El AST es la representación intermedia del programa. Define todas las estructuras de datos que representan el código de forma jerárquica y procesable.
+El AST es la representación intermedia del programa. Define todas las estructuras de datos (`Expr`, `Declaration`, `Program`) que representan el código de forma jerárquica y procesable. Incluye el optimizador multi-pasada en `optimize.rs`.
 
 ---
 
 ### 2. **Análisis Léxico (Lexer)**
 📂 [`src/lexer/`](src/lexer/) | 📖 [Documentación detallada](src/lexer/README.md)
 
-El lexer transforma el código fuente (texto plano) en una secuencia de **tokens** con significado.
+El lexer transforma el código fuente (texto plano) en una secuencia de **tokens** con significado. Implementado como iterador lazy con O(n) single-pass y lookahead de 1 carácter.
 
 ---
 
 ### 3. **Análisis Sintáctico (Parser)**
 📂 [`src/parser/`](src/parser/) | 📖 [Documentación detallada](src/parser/README.md)
 
-El parser recibe la secuencia de tokens del lexer y construye un **Árbol de Sintaxis Abstracta (AST)** que representa la estructura jerárquica del programa.
+El parser recibe la secuencia de tokens del lexer y construye un **Árbol de Sintaxis Abstracta (AST)** que representa la estructura jerárquica del programa. Usa Pratt parsing para expresiones con precedencia.
 
 ---
 
 ### 4. **Expansión de Macros**
 📂 [`src/macros/`](src/macros/) | 📖 [Documentación detallada](src/macros/README.md)
 
-La fase de expansión de macros transpila construcciones de macros a código HULK estándar en tiempo de compilación. Las macros son **metaprogramación** que permite extender el lenguaje con nuevas construcciones sintácticas.
+La fase de expansión de macros transpila construcciones de macros a código HULK estándar en tiempo de compilación. Las macros son **metaprogramación** que permite extender el lenguaje con nuevas construcciones sintácticas. Soporta parámetros simbólicos (`@`), placeholders (`$`), body arguments (`*`) y pattern matching sobre el AST.
 
 ---
 
 ### 5. **Análisis Semántico**
-📂 [`src/semantic/`](src/semantic/)
+📂 [`src/semantic/`](src/semantic/) | 📖 [Documentación detallada](src/semantic/README.md)
 
-El análisis semántico verifica que el programa sea correcto más allá de la sintaxis:
+El análisis semántico verifica que el programa sea correcto más allá de la sintaxis: resolución de tipos, validación de herencia (4 pasadas), verificación de conformidad de tipos y manejo de scopes.
 
 ---
 
 ### 6. **Optimización**
 📂 [`src/ast/optimize.rs`](src/ast/optimize.rs)
 
-La fase de optimización mejora el código sin cambiar su semántica, aplicando transformaciones que reducen complejidad y mejoran rendimiento.
+La fase de optimización mejora el código sin cambiar su semántica, aplicando: constant folding, constant propagation (con detección de variables mutables vía `:=`), dead code elimination, simplificación algebraica, cortocircuito booleano y string interning.
 
 ---
 
-### 7. **Generación de Código (Codegen)**
-📂 [`src/codegen/`](src/codegen/)
+### 7. **Generación de Código (Codegen) — LLVM IR**
+📂 [`src/codegen/`](src/codegen/) | 📖 [Documentación detallada](src/codegen/README.md)
+
+Backend completo que genera LLVM IR. Usa `double` como tipo universal, patrón alloca/store/load para variables, `malloc` para heap, y un GC por barrido. Soporta: clases con herencia profunda, closures con captura de variables libres, `is`/`as` en runtime, `base()`, `rand()`, vectores con bounds checking y más.
 
 ---
 
 ## Pipeline del Compilador
 
-El flujo completo de compilación es:
-
 ```
-Código fuente (String)
+Código fuente (.hulk)
     ↓
-1. Lexer → Tokens
+1. Lexer → Tokens (src/lexer/)
     ↓
-2. Parser → AST (Program)
+2. Parser → AST (src/parser/)
     ↓
-3. Macro Expansion → AST expandido (sin macros)
+3. Macro Expansion → AST expandido sin macros (src/macros/)
     ↓
-4. Semantic Analyzer → AST anotado con tipos
+4. Semantic Analyzer → Contexto de tipos verificado (src/semantic/)
     ↓
-5. Optimizer → AST optimizado
+5. Optimizer → AST optimizado (src/ast/optimize.rs)
     ↓
-6. Codegen → Código ejecutable
+6. LLVM IR Codegen → output.ll (src/codegen/llvm_target.rs)
+    ↓
+7. clang output.ll -o programa -lm → Ejecutable nativo
 ```
 
 ---
 
 ## Uso
 
+### Compilar el proyecto
+
 ```bash
-# Compilar el proyecto
 cargo build
+```
 
-# Ejecutar el compilador
-cargo run
+### Ejecutar tests (169 tests)
 
-# Ejecutar tests
+```bash
 cargo test
 ```
 
-El punto de entrada está en [`src/main.rs`](src/main.rs), que muestra el AST antes y después de optimización.
+### Compilar un programa HULK a ejecutable nativo
+
+```bash
+# Desde archivo
+cargo run -- mi_programa.hulk > output.ll
+clang output.ll -o programa -lm
+./programa
+
+# Desde stdin
+echo 'print(42);' | cargo run > output.ll
+clang output.ll -o programa -lm
+./programa
+```
+
+### Interpretar LLVM IR directamente (sin compilar a nativo)
+
+```bash
+echo 'print("Hello HULK!");' | cargo run > output.ll
+lli output.ll
+```
+
+El punto de entrada está en [`src/main.rs`](src/main.rs), que ejecuta todo el pipeline y escribe el LLVM IR resultante en `output.ll`.
+
+---
+
+## Características del Lenguaje HULK
+
+| Característica | Ejemplo | Soporte |
+|---|---|---|
+| Tipos numéricos (f64) | `let x = 42;` | ✅ |
+| Strings y concatenación | `"hello" @ " world"` | ✅ |
+| Booleanos | `true & false` | ✅ |
+| If/Else | `if (x > 0) "pos" else "neg"` | ✅ |
+| While loops | `while (x > 0) { ... }` | ✅ |
+| For loops | `for (x in [1,2,3]) print(x);` | ✅ |
+| Let bindings | `let x = 5 in x + 1` | ✅ |
+| Funciones | `function f(x) => x * 2;` | ✅ |
+| Lambdas / Closures | `let f = (x) => x + 1;` | ✅ |
+| Clases (OOP) | `type Point(x, y) { ... }` | ✅ |
+| Herencia profunda | `type C inherits B inherits A` | ✅ |
+| `base()` calls | `base(args)` en constructores hijos | ✅ |
+| `is` / `as` operators | `obj is Point`, `obj as Point` | ✅ |
+| Protocolos | `protocol Printable { ... }` | ✅ |
+| Vectores | `[1, 2, 3]`, `v[i]` | ✅ |
+| Generadores de vectores | `[x*2 \|\| x in list]` | ✅ |
+| Bounds checking | Error en runtime si índice fuera de rango | ✅ |
+| Match expressions | `match(x) { case 1 => ... }` | ✅ |
+| Macros | `def repeat(n, *body) => ...` | ✅ |
+| Pattern matching (macros) | `match(expr) { case (x + 0) => x }` | ✅ |
+| Math builtins | `sqrt`, `sin`, `cos`, `exp`, `log`, `PI`, `E` | ✅ |
+| `rand()` | Número aleatorio en [0, 1) | ✅ |
+| GC (garbage collection) | Barrido automático al final del programa | ✅ |
 
 ---
 
@@ -95,34 +151,42 @@ El punto de entrada está en [`src/main.rs`](src/main.rs), que muestra el AST an
 ```
 hulk-compiler/
 ├── src/
-│   ├── main.rs           # Punto de entrada
-│   ├── lib.rs            # Biblioteca principal
-│   ├── ast/              # Fase 1: Definición del AST
-│   │   ├── mod.rs
-│   │   ├── nodes.rs
-│   │   ├── display.rs
-│   │   ├── optimize.rs   # Fase 4: Optimización
+│   ├── main.rs              # Punto de entrada (CLI)
+│   ├── lib.rs               # Biblioteca principal (8 módulos públicos)
+│   ├── ast/                 # Fase 1: Definición del AST
+│   │   ├── mod.rs           # Re-exports
+│   │   ├── nodes.rs         # Todos los nodos: Expr, Declaration, Program...
+│   │   ├── display.rs       # Pretty-printing del AST
+│   │   ├── optimize.rs      # Optimizador multi-pasada (~470 líneas)
 │   │   └── README.md
-│   ├── lexer/            # Fase 2: Análisis léxico
-│   │   ├── mod.rs
-│   │   ├── tokens.rs
-│   │   ├── tests.rs
+│   ├── lexer/               # Fase 2: Análisis léxico
+│   │   ├── mod.rs           # Lexer principal (~766 líneas)
+│   │   ├── tokens.rs        # Definición de Token y TokenKind
+│   │   ├── tests.rs         # Tests del lexer
 │   │   └── README.md
-│   ├── parser/           # Fase 3: Análisis sintáctico
-│   │   ├── mod.rs
-│   │   ├── tests.rs
+│   ├── parser/              # Fase 3: Análisis sintáctico
+│   │   ├── mod.rs           # Parser Pratt (~1,641 líneas)
+│   │   ├── tests.rs         # Tests del parser
 │   │   └── README.md
-│   ├── semantic/         # Fase 5: Análisis semántico
-│   │   ├── mod.rs
-│   │   ├── scope.rs
-│   │   └── types.rs
-│   ├── codegen/          # Fase 6: Generación de código
-│   │   └── mod.rs
-│   ├── errors/           # Manejo de errores
+│   ├── macros/              # Fase 4: Expansión de macros
+│   │   ├── mod.rs           # Motor de macros (~543 líneas)
+│   │   └── README.md
+│   ├── semantic/            # Fase 5: Análisis semántico
+│   │   ├── mod.rs           # 4 pasadas de análisis (~350 líneas)
+│   │   ├── types.rs         # Sistema de tipos (~175 líneas)
+│   │   ├── scope.rs         # Tabla de símbolos
+│   │   └── README.md
+│   ├── codegen/             # Fase 6: Generación de código LLVM IR
+│   │   ├── mod.rs           # Trait CodeGenerator + re-exports
+│   │   ├── llvm_target.rs   # Backend LLVM IR (~1,512 líneas)
+│   │   ├── tests.rs         # Tests básicos (26 tests)
+│   │   ├── extra_tests.rs   # Tests avanzados (29 tests)
+│   │   └── README.md
+│   ├── errors/              # Manejo de errores
 │   │   ├── mod.rs
 │   │   ├── lexer.rs
 │   │   └── parser.rs
-│   └── utils/            # Utilidades
+│   └── utils/               # Utilidades
 │       └── mod.rs
 ├── Cargo.toml
 └── README.md
@@ -133,11 +197,286 @@ hulk-compiler/
 ## 🔧 Tecnologías
 
 - **Lenguaje**: Rust 🦀
+- **Backend**: LLVM IR (compilable con `clang` o `llc`)
+- **Runtime**: Funciones C estándar (`printf`, `malloc`, `strlen`, `strcat`, etc.)
+- **GC**: Recolector de basura por barrido al finalizar el programa
 - **Paradigma**: Funcional + Orientado a Objetos
 - **Algoritmos**:
   - Lexer basado en iteradores con lookahead
   - Parser descendente recursivo con Pratt parsing
-  - Optimización multi-pasada sobre el AST
+  - Optimización multi-pasada sobre el AST (con detección de mutables)
+  - Codegen tree-walking sobre AST → LLVM IR textual
+
+---
+
+## 🧑‍💻 Guía del Desarrollador: Cómo Agregar Nuevas Funcionalidades
+
+Esta sección describe paso a paso cómo extender el compilador HULK con nuevas características del lenguaje.
+
+### Flujo General
+
+Para agregar cualquier funcionalidad nueva, se deben tocar (en orden):
+
+1. **AST** (`src/ast/nodes.rs`) — Definir la nueva estructura en el árbol
+2. **Display** (`src/ast/display.rs`) — Pretty-printing para debugging
+3. **Lexer** (`src/lexer/`) — Si hay nueva sintaxis (tokens nuevos)
+4. **Parser** (`src/parser/mod.rs`) — Parsear la nueva sintaxis al AST
+5. **Semántico** (`src/semantic/mod.rs`, `types.rs`) — Validar tipos y reglas
+6. **Optimizador** (`src/ast/optimize.rs`) — Aplicar optimizaciones (si aplica)
+7. **Codegen** (`src/codegen/llvm_target.rs`) — Generar LLVM IR
+8. **Tests** — En cada módulo afectado
+
+### Ejemplo 1: Agregar un Nuevo Operador Binario
+
+Supongamos que quieres agregar el operador `<<` (shift left).
+
+#### Paso 1: AST — Agregar variante al enum `Op`
+
+En `src/ast/nodes.rs`:
+```rust
+pub enum Op {
+    Add, Sub, Mul, Div, Mod, Pow,
+    // ... existentes
+    Shl, // ← NUEVO
+}
+```
+
+#### Paso 2: Display — Mostrar el operador
+
+En `src/ast/display.rs`, agregar el caso en el `Display` de `Op`:
+```rust
+Op::Shl => write!(f, "<<"),
+```
+
+#### Paso 3: Lexer — Reconocer `<<`
+
+En `src/lexer/tokens.rs`, agregar el token:
+```rust
+pub enum TokenKind {
+    // ...
+    Shl, // <<
+}
+```
+
+En `src/lexer/mod.rs`, en la función que lee operadores:
+```rust
+'<' if self.peek() == Some('<') => {
+    self.advance();
+    Token::new(TokenKind::Shl, ...)
+}
+```
+
+#### Paso 4: Parser — Parsear con precedencia
+
+En `src/parser/mod.rs`, en la tabla de precedencias (Pratt parsing):
+```rust
+TokenKind::Shl => Some((Precedence::Shift, Op::Shl)),
+```
+
+#### Paso 5: Semántico — Validar tipos
+
+En `src/semantic/mod.rs`, en el visitor de `Expr::Binary`:
+```rust
+Op::Shl => {
+    self.expect_type(&left_type, &Type::number());
+    self.expect_type(&right_type, &Type::number());
+    Ok(Type::number())
+}
+```
+
+#### Paso 6: Optimizador (opcional)
+
+En `src/ast/optimize.rs`, agregar folding:
+```rust
+(Expr::Number(a), Op::Shl, Expr::Number(b)) => {
+    Expr::Number(((a as i64) << (b as i64)) as f64)
+}
+```
+
+#### Paso 7: Codegen — Generar LLVM IR
+
+En `src/codegen/llvm_target.rs`, en `emit_expr` → `Expr::Binary`:
+```rust
+Op::Shl => {
+    let li = self.next_reg();
+    let ri = self.next_reg();
+    let res = self.next_reg();
+    writeln!(out, "  {} = fptosi double {} to i64", li, lv);
+    writeln!(out, "  {} = fptosi double {} to i64", ri, rv);
+    writeln!(out, "  {} = shl i64 {}, {}", res, li, ri);
+    let fd = self.next_reg();
+    writeln!(out, "  {} = sitofp i64 {} to double", fd, res);
+    fd
+}
+```
+
+#### Paso 8: Tests
+
+Agregar tests en `src/codegen/tests.rs` o `extra_tests.rs`:
+```rust
+#[test]
+fn test_shl_operator() {
+    let code = "print(2 << 3);"; // Debería imprimir 16
+    let ir = compile(code);
+    assert!(ir.contains("shl i64"));
+}
+```
+
+---
+
+### Ejemplo 2: Agregar una Nueva Función Builtin
+
+Supongamos que quieres agregar `abs(x)` (valor absoluto).
+
+#### Paso 1: AST
+
+En `src/ast/nodes.rs`, agregar variante a `Expr`:
+```rust
+pub enum Expr {
+    // ...
+    Abs(Box<Spanned<Expr>>), // ← NUEVO
+}
+```
+
+#### Paso 2: Display
+
+En `src/ast/display.rs`:
+```rust
+Expr::Abs(x) => write!(f, "abs({})", x.node),
+```
+
+#### Paso 3: Parser
+
+En `src/parser/mod.rs`, donde se parsean llamadas a funciones:
+```rust
+"abs" => {
+    let arg = self.parse_expr()?;
+    self.expect(TokenKind::RParen)?;
+    Expr::Abs(Box::new(arg))
+}
+```
+
+#### Paso 4: Semántico
+
+En `src/semantic/mod.rs`:
+```rust
+Expr::Abs(x) => {
+    let t = self.check_expr(x)?;
+    self.expect_type(&t, &Type::number());
+    Ok(Type::number())
+}
+```
+
+#### Paso 5: Optimizador
+
+En `src/ast/optimize.rs`:
+```rust
+Expr::Abs(x) => {
+    let opt_x = optimize_expr(*x, interner, env);
+    if let Expr::Number(n) = opt_x.node {
+        Expr::Number(n.abs()) // Constant folding
+    } else {
+        Expr::Abs(Box::new(opt_x))
+    }
+}
+```
+
+#### Paso 6: Codegen
+
+En `src/codegen/llvm_target.rs`:
+```rust
+Expr::Abs(x) => {
+    let xv = self.emit_expr(x, out, ctx);
+    let r = self.next_reg();
+    writeln!(out, "  {} = call double @llvm.fabs.f64(double {})", r, xv);
+    r
+}
+```
+
+No olvidar declarar el intrínseco al inicio del IR:
+```rust
+declarations.push("declare double @llvm.fabs.f64(double)");
+```
+
+---
+
+### Ejemplo 3: Agregar un Nuevo Tipo de Declaración
+
+Supongamos que quieres agregar `enum`.
+
+1. **AST**: Crear `EnumDecl` en `nodes.rs`, agregar `Declaration::Enum(EnumDecl)`
+2. **Parser**: Parsear `enum Color { Red, Green, Blue }` en `parse_declaration()`
+3. **Semántico**: Registrar el enum como tipo, validar variantes en pasada 1
+4. **Codegen**: Asignar un `double` numérico a cada variante (0.0, 1.0, 2.0...)
+5. **Tests**: Verificar declaración, uso en match, comparación
+
+---
+
+### Ejemplo 4: Agregar una Nueva Optimización
+
+Para agregar una nueva pasada de optimización (ej: *strength reduction*):
+
+1. En `src/ast/optimize.rs`, agregar un nuevo caso en `optimize_expr()`:
+```rust
+// Strength reduction: x * 2 → x + x
+Expr::Binary(left, Op::Mul, right) => {
+    if let Expr::Number(2.0) = opt_right.node {
+        return Expr::Binary(
+            Box::new(opt_left.clone()),
+            Op::Add,
+            Box::new(opt_left),
+        );
+    }
+    // ... existing cases
+}
+```
+
+2. **IMPORTANTE**: Si la optimización altera variables que podrían ser mutadas con `:=`, usar `collect_assigned_vars()` para obtener el set de variables mutables y excluirlas de la transformación:
+```rust
+let mut mutated = HashSet::new();
+collect_assigned_vars(&body.node, &mut mutated);
+// No optimizar variables en `mutated`
+```
+
+---
+
+### Checklist para Nuevas Funcionalidades
+
+- [ ] Definir nodo AST en `nodes.rs`
+- [ ] Implementar `Display` en `display.rs`
+- [ ] Agregar token(s) en `tokens.rs` (si hay nueva sintaxis)
+- [ ] Parsear en `parser/mod.rs`
+- [ ] Validar en `semantic/mod.rs` y/o `types.rs`
+- [ ] Optimizar en `ast/optimize.rs` (si aplica)
+- [ ] Generar LLVM IR en `codegen/llvm_target.rs`
+- [ ] Agregar tests en el módulo correspondiente
+- [ ] Verificar que los 169+ tests existentes siguen pasando (`cargo test`)
+
+---
+
+### Arquitectura Clave del Codegen
+
+El trait central es:
+
+```rust
+pub trait CodeGenerator {
+    fn generate(&self, program: &Program, context: &Context) -> String;
+}
+```
+
+`LlvmGenerator` implementa este trait. Las funciones internas principales son:
+
+| Función | Propósito |
+|---------|-----------|
+| `emit_expr()` | Genera IR para cualquier expresión (recursivo) |
+| `emit_class()` | Genera struct, constructor y métodos de una clase |
+| `emit_fn()` | Genera una función LLVM |
+| `collect_free_vars()` | Detecta variables libres para closures |
+| `collect_assigned_vars()` | Detecta variables mutadas con `:=` (para el optimizador) |
+| `class_inherits_from()` | Verifica herencia para `is`/`as` |
+| `mangle_fn()` | Renombra `main` → `__hulk_main` para evitar colisión con `@main` de C |
+| `fmt_double()` | Formatea doubles válidos para LLVM IR (siempre con punto decimal) |
+| `emit_gc_sweep_fn()` | Genera la función de barrido del GC |
   - Análisis de flujo de datos para constant propagation
 
 ---

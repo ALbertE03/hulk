@@ -88,10 +88,18 @@ impl Context {
         match annotation {
             TypeAnnotation::Name(name) => self.get_type(name),
             TypeAnnotation::Iterable(inner) => {
-                 // Simplificación: Chequear si el tipo interno existe
-                 let _ = self.resolve_type(inner)?;
-                 // En una implementación real devolveríamos un tipo parametrizado
-                 self.get_type("Object") 
+                 let inner_type = self.resolve_type(inner)?;
+                 let name = format!("Iterable<{}>", inner_type.borrow().name);
+                 
+                 // Crear 'al vuelo' el protocolo Iterable<T>
+                 // Tiene: next() -> Boolean, current() -> T
+                 let iter = Rc::new(RefCell::new(Type::new(&name, TypeKind::Protocol, None)));
+                 
+                 let bool_type = self.get_type("Boolean")?;
+                 iter.borrow_mut().define_method("next".to_string(), vec![], bool_type);
+                 iter.borrow_mut().define_method("current".to_string(), vec![], inner_type);
+                 
+                 Ok(iter)
             },
             TypeAnnotation::Function { params, return_type } => {
                 for p in params { self.resolve_type(p)?; }
@@ -377,8 +385,59 @@ pub fn check_program(program: &Program) -> Result<Context, Vec<SemanticError>> {
          }
     }
     
-    // TODO: Chequear cuerpos de métodos de tipos e inicializaciones de atributos
-    // Requiere visitar TypeDecl nuevamente y establecer `current_type`
+    // Chequear Cuerpos de Tipos (Métodos y Atributos)
+    for decl in &program.declarations {
+        if let Declaration::Type(type_decl) = decl {
+            let type_rc = context.get_type(&type_decl.name).unwrap();
+            
+            // 1. Inicialización de Atributos
+            // Los atributos pueden usar argumentos del constructor en su inicialización
+            for attr in &type_decl.attributes {
+                 let scope = Rc::new(Scope::new());
+                 // Añadir parámetros del constructor al scope
+                 for (name, ty) in &type_rc.borrow().params {
+                     scope.define_variable(name.clone(), ty.clone());
+                 }
+                 
+                 let mut checker = BodyChecker::new(&context, scope);
+                 // Permitir self en init? HULK permite 'self' pero debe estar parcialmente inicializado.
+                 checker.current_type = Some(type_rc.clone());
+
+                 let init_type = match checker.check_expr(&attr.init) {
+                     Ok(t) => t,
+                     Err(mut e) => { errors.append(&mut e); context.get_type("Object").unwrap() }
+                 };
+                 
+                 let attr_type = type_rc.borrow().attributes.get(&attr.name).unwrap().clone();
+                 if !conforms_to(init_type.clone(), attr_type.clone()) {
+                      errors.push(SemanticError::TypeMismatch{ expected: attr_type.borrow().name.clone(), found: init_type.borrow().name.clone() });
+                 }
+            }
+
+            // 2. Cuerpos de Métodos
+            for method in &type_decl.methods {
+                let scope = Rc::new(Scope::new());
+                let method_info = type_rc.borrow().get_method(&method.name).unwrap();
+                
+                // Definir parámetros del método en el scope
+                for (name, ty) in &method_info.params {
+                    scope.define_variable(name.clone(), ty.clone());
+                }
+                
+                let mut checker = BodyChecker::new(&context, scope);
+                checker.current_type = Some(type_rc.clone()); // 'self' disponible
+                
+                let body_type = match checker.check_expr(&method.body) {
+                     Ok(t) => t,
+                     Err(mut e) => { errors.append(&mut e); context.get_type("Object").unwrap() }
+                 };
+                 
+                 if !conforms_to(body_type.clone(), method_info.return_type.clone()) {
+                      errors.push(SemanticError::TypeMismatch{ expected: method_info.return_type.borrow().name.clone(), found: body_type.borrow().name.clone() });
+                 }
+            }
+        }
+    }
 
     if !errors.is_empty() { return Err(errors); }
 
@@ -440,6 +499,18 @@ impl<'a> BodyChecker<'a> {
                              Op::Eq | Op::Neq => Ok(self.context.get_type("Boolean").unwrap()),
                             _ => Err(vec![SemanticError::OperationNotDefined(format!("{:?}", op), "Boolean".to_string())])
                         }
+                   } else if matches!(op, Op::Concat | Op::ConcatSpace) {
+                        // @ and @@ work with any types – codegen converts to string at runtime
+                        Ok(self.context.get_type("String").unwrap())
+                   } else if l.borrow().name == "Object" || r.borrow().name == "Object" {
+                        // When one side is Object (unknown type at compile time),
+                        // allow the operation and infer the result from the known side.
+                        match op {
+                            Op::Add | Op::Sub | Op::Mul | Op::Div | Op::Mod | Op::Pow => Ok(self.context.get_type("Number").unwrap()),
+                            Op::Eq | Op::Neq | Op::Lt | Op::Gt | Op::Le | Op::Ge => Ok(self.context.get_type("Boolean").unwrap()),
+                            Op::And | Op::Or => Ok(self.context.get_type("Boolean").unwrap()),
+                            _ => Ok(self.context.get_type("Object").unwrap()),
+                        }
                    } else {
                         if matches!(op, Op::Eq | Op::Neq) {
                              Ok(self.context.get_type("Boolean").unwrap())
@@ -467,7 +538,7 @@ impl<'a> BodyChecker<'a> {
             Expr::Let { bindings, body } => {
                 let current_scope = Rc::new(Scope::new_child(self.scope.clone()));
                 for (name, type_ann, expr_span) in bindings {
-                    // Asumiendo que las declaraciones let ven las declaraciones anteriores en el mismo bloque
+                   
                     let mut temp_checker = BodyChecker::new(self.context, current_scope.clone());
                     let t_expr = temp_checker.check_expr(expr_span)?;
                     
@@ -502,13 +573,20 @@ impl<'a> BodyChecker<'a> {
                           }
                      }
                      Ok(ret_type)
+                } else if self.scope.find_variable(name).is_some() {
+                    // Variable exists in scope — could be a lambda; check args but return Object
+                    for arg_expr in args {
+                        let _ = self.check_expr(arg_expr)?;
+                    }
+                    Ok(self.context.get_type("Object").unwrap())
                 } else {
                     Err(vec![SemanticError::FunctionNotFound(name.clone(), args.len())])
                 }
             },
              Expr::If{cond, then_expr, else_expr} => {
                  let t_cond = self.check_expr(cond)?;
-                 if t_cond.borrow().name != "Boolean" {
+                 // Accept Boolean or Object (Object may be Boolean at runtime)
+                 if t_cond.borrow().name != "Boolean" && t_cond.borrow().name != "Object" {
                      return Err(vec![SemanticError::TypeMismatch{ expected: "Boolean".to_string(), found: t_cond.borrow().name.clone() }]);
                  }
                  let t_then = self.check_expr(then_expr)?;
@@ -543,7 +621,8 @@ impl<'a> BodyChecker<'a> {
              },
              Expr::While { cond, body } => {
                   let t_cond = self.check_expr(cond)?;
-                  if t_cond.borrow().name != "Boolean" {
+                  // Accept Boolean or Object (Object may be Boolean at runtime)
+                  if t_cond.borrow().name != "Boolean" && t_cond.borrow().name != "Object" {
                       return Err(vec![SemanticError::TypeMismatch{ expected: "Boolean".to_string(), found: t_cond.borrow().name.clone() }]);
                   }
                   let _ = self.check_expr(body)?;
@@ -590,6 +669,88 @@ impl<'a> BodyChecker<'a> {
                  } else {
                      Err(vec![SemanticError::MethodNotFound(format!("Method {} not found in {}", method, t_obj.borrow().name))])
                  }
+             },
+             Expr::AttributeAccess { obj, attribute } => {
+                 let t_obj = self.check_expr(obj)?;
+                 // Look for attribute in the type hierarchy
+                 let mut curr = Some(t_obj.clone());
+                 while let Some(c) = curr {
+                     if let Some(attr_type) = c.borrow().attributes.get(attribute) {
+                         return Ok(attr_type.clone());
+                     }
+                     curr = c.borrow().parent.clone();
+                 }
+                 // Attribute not found in type info — return Object as fallback
+                 Ok(self.context.get_type("Object").unwrap())
+             },
+             Expr::Is(expr, _type_name) => {
+                 let _ = self.check_expr(expr)?;
+                 Ok(self.context.get_type("Boolean").unwrap())
+             },
+             Expr::As(expr, type_name) => {
+                 let _ = self.check_expr(expr)?;
+                 // Return the target type if known, otherwise Object
+                 Ok(self.context.get_type(type_name).unwrap_or_else(|_| self.context.get_type("Object").unwrap()))
+             },
+             Expr::VectorLiteral(elems) => {
+                 for e in elems {
+                     let _ = self.check_expr(e)?;
+                 }
+                 Ok(self.context.get_type("Object").unwrap())
+             },
+             Expr::VectorGenerator { expr, var, iterable } => {
+                 let _ = self.check_expr(iterable)?;
+                 let gen_scope = Rc::new(Scope::new_child(self.scope.clone()));
+                 gen_scope.define_variable(var.clone(), self.context.get_type("Object").unwrap());
+                 let mut gen_checker = BodyChecker::new(self.context, gen_scope);
+                 let _ = gen_checker.check_expr(expr)?;
+                 Ok(self.context.get_type("Object").unwrap())
+             },
+             Expr::Indexing { obj, index } => {
+                 let _ = self.check_expr(obj)?;
+                 let t_idx = self.check_expr(index)?;
+                 if t_idx.borrow().name != "Number" {
+                     return Err(vec![SemanticError::TypeMismatch{ expected: "Number".to_string(), found: t_idx.borrow().name.clone() }]);
+                 }
+                 Ok(self.context.get_type("Object").unwrap())
+             },
+             Expr::For { var, iterable, body } => {
+                 let _ = self.check_expr(iterable)?;
+                 let for_scope = Rc::new(Scope::new_child(self.scope.clone()));
+                 for_scope.define_variable(var.clone(), self.context.get_type("Object").unwrap());
+                 let mut for_checker = BodyChecker::new(self.context, for_scope);
+                 let _ = for_checker.check_expr(body)?;
+                 Ok(self.context.get_type("Object").unwrap())
+             },
+             Expr::Lambda { params, return_type: _, body } => {
+                 let lambda_scope = Rc::new(Scope::new_child(self.scope.clone()));
+                 for p in params {
+                     let p_type = if let Some(ann) = &p.type_annotation {
+                         self.context.resolve_type(ann).unwrap_or_else(|_| self.context.get_type("Object").unwrap())
+                     } else {
+                         self.context.get_type("Object").unwrap()
+                     };
+                     lambda_scope.define_variable(p.name.clone(), p_type);
+                 }
+                 let mut lambda_checker = BodyChecker::new(self.context, lambda_scope);
+                 let _ = lambda_checker.check_expr(body)?;
+                 Ok(self.context.get_type("Object").unwrap())
+             },
+             Expr::Match { expr, cases, default } => {
+                 let _ = self.check_expr(expr)?;
+                 for case in cases {
+                     let _ = self.check_expr(&case.expr)?;
+                 }
+                 if let Some(d) = default {
+                     let _ = self.check_expr(d)?;
+                 }
+                 Ok(self.context.get_type("Object").unwrap())
+             },
+             Expr::BaseCall { args } => {
+                 for a in args {
+                     let _ = self.check_expr(a)?;
+                 }
+                 Ok(self.context.get_type("Object").unwrap())
              },
              
             _ => Ok(self.context.get_type("Object").unwrap()), 
