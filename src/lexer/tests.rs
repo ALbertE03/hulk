@@ -1,5 +1,6 @@
 use super::*;
 use crate::lexer::tokens::Token::*;
+use crate::errors::LexError;
 
 #[test]
 fn test_keywords_and_identifiers() {
@@ -206,7 +207,7 @@ fn test_hulk_identifier_rules() {
     // _x -> Error(_) + Id(x)
     let input = "_x";
     let tokens: Vec<_> = Lexer::new(input).collect();
-    assert!(matches!(tokens[0], Err(crate::lexer::errors::LexError::UnexpectedCharacter('_', _))));
+    assert!(matches!(tokens[0], Err(crate::errors::LexError::UnexpectedCharacter('_', _))));
     assert!(matches!(tokens[1].as_ref().unwrap().0, Token::Identifier(_)));
 
     // 8ball -> Num(8) + Id(ball)
@@ -275,7 +276,6 @@ fn test_large_program() {
 
 #[test]
 fn test_multiple_errors() {
-    use crate::lexer::errors::LexError;
     // Separate errors that don't consume each other
     let input = "# $ \"hello";
     let tokens: Vec<_> = Lexer::new(input).collect();
@@ -355,7 +355,6 @@ fn test_nested_calls_and_access() {
 
 #[test]
 fn test_errors() {
-    use crate::lexer::errors::LexError;
     
     // Unterminated string
     let input = "\"hello";

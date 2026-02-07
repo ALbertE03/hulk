@@ -1,9 +1,8 @@
 pub mod tokens;
-pub mod errors;
 
 use crate::utils::Position;
 use tokens::Token;
-use errors::LexError;
+use crate::errors::LexError;
 use std::str::Chars;
 use std::iter::Peekable;
 
