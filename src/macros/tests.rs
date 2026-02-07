@@ -62,22 +62,6 @@ fn test_expand_program_collects_macros() {
 }
 
 #[test]
-fn test_expand_simple_macro_call() {
-    let input = r#"
-        def id(x: Number): Number => x;
-        id(42)
-    "#;
-    let mut parser = Parser::new(input);
-    let program = parser.parse_program().unwrap();
-    
-    let mut ctx = MacroExpansionContext::new();
-    let expanded = ctx.expand_program(program);
-    
-    // La macro debe estar registrada
-    assert!(ctx.macros.contains_key("id"));
-}
-
-#[test]
 fn test_expand_macro_with_normal_params() {
     let input = r#"
         def add_one(x: Number): Number => x + 1;

@@ -32,84 +32,17 @@ La fase de expansión de macros transpila construcciones de macros a código HUL
 
 ---
 
-### 5. **Optimización**
-📂 [`src/ast/optimize.rs`](src/ast/optimize.rs)
-
-La fase de optimización mejora el código sin cambiar su semántica, aplicando transformaciones que reducen complejidad y mejoran rendimiento.
-
-**Optimizaciones implementadas:**
-
-#### 5.1. Constant Folding (Plegado de Constantes)
-Evalúa operaciones con valores constantes en tiempo de compilación:
-```hulk
-2 + 3 * 4      →  14
-sqrt(16)       →  4
-5 > 3          →  true
-"hola" @ " mundo"  →  "hola mundo"
-```
-
-#### 5.2. Constant Propagation (Propagación de Constantes)
-Sustituye variables con valores constantes conocidos:
-```hulk
-let x = 5 in x + x        →  let x = 5 in 10
-let x = 8, y = x + 2 in y →  let x = 8, y = 10 in 10
-```
-
-#### 5.3. Dead Code Elimination (Eliminación de Código Muerto)
-Elimina código que nunca se ejecutará:
-```hulk
-if (true) 10 else 20   →  10
-if (false) x else y    →  y
-while (false) { ... }  →  { }
-```
-
-#### 5.4. Algebraic Simplification (Simplificación Algebraica)
-Aplica identidades matemáticas:
-```hulk
-x + 0    →  x
-x * 1    →  x
-x * 0    →  0
-x - 0    →  x
-0 / x    →  0
-```
-
-#### 5.5. Boolean Short-Circuit (Cortocircuito Booleano)
-Optimiza operaciones lógicas con constantes:
-```hulk
-true | x   →  true
-false & x  →  false
-!true      →  false
-```
-
-#### 5.6. String Interning (Internado de Cadenas)
-Deduplica cadenas idénticas en memoria usando un `HashMap`, reduciendo el uso de memoria.
-
-**Uso:**
-```rust
-use hulk_compiler::ast::optimize::optimize_program;
-
-let optimized_ast = optimize_program(original_ast);
-```
-
----
-
-### 6. **Análisis Semántico**
+### 5. **Análisis Semántico**
 📂 [`src/semantic/`](src/semantic/)
 
 El análisis semántico verifica que el programa sea correcto más allá de la sintaxis:
 
-**Funcionalidades:**
-- **Scope (Alcance)**: Manejo de ámbitos de variables con `ScopeManager`
-- **Tipos**: Sistema de tipos con verificación de compatibilidad
-- Verificación de:
-  - Variables declaradas antes de uso
-  - Tipos compatibles en operaciones
-  - Firmas de funciones correctas
-  - Implementación correcta de protocolos
+---
 
-**Módulos:**
-- `scope.rs`: Gestión de ámbitos anidados (stack de entornos)
-- `types.rs`: Sistema de tipos, inferencia y verificación
+### 6. **Optimización**
+📂 [`src/ast/optimize.rs`](src/ast/optimize.rs)
+
+La fase de optimización mejora el código sin cambiar su semántica, aplicando transformaciones que reducen complejidad y mejoran rendimiento.
 
 ---
 

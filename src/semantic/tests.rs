@@ -158,3 +158,89 @@ fn test_block_scope() {
     ";
     check(code);
 }
+
+#[test]
+fn test_type_redefinition() {
+    let code = "
+    type A {}
+    type A {}
+    ";
+    let errors = check_fail(code);
+    match &errors[0] {
+        SemanticError::TypeDefined(name) => assert_eq!(name, "A"),
+        _ => panic!("Expected TypeDefined"),
+    }
+}
+
+#[test]
+fn test_function_redefinition() {
+    let code = "
+    function foo() => 1;
+    function foo() => 2;
+    ";
+    let errors = check_fail(code);
+    match &errors[0] {
+        SemanticError::FunctionDefined(name) => assert_eq!(name, "foo"),
+        _ => panic!("Expected FunctionDefined"),
+    }
+}
+
+#[test]
+fn test_parent_type_not_found() {
+    let code = "
+    type A inherits B {}
+    ";
+    let errors = check_fail(code);
+    match &errors[0] {
+        SemanticError::TypeNotFound(name) => assert_eq!(name, "B"),
+        _ => panic!("Expected TypeNotFound"),
+    }
+}
+
+#[test]
+fn test_self_outside_class() {
+    let errors = check_fail("print(self);");
+    match &errors[0] {
+        SemanticError::SelfReference => {},
+        _ => panic!("Expected SelfReference"),
+    }
+}
+
+#[test]
+fn test_attribute_redefinition() {
+    let code = "
+    type A {
+        x = 1;
+        x = 2;
+    }
+    ";
+    let errors = check_fail(code);
+    match &errors[0] {
+        SemanticError::AttributeDefined(name) => assert!(name.contains("A.x")),
+        _ => panic!("Expected AttributeDefined"),
+    }
+}
+
+#[test]
+fn test_signature_mismatch() {
+    let code = "
+    type A {
+        foo(x: Number) => x;
+    }
+    type B inherits A {
+        foo(x: Number, y: Number) => x + y;
+    }
+    ";
+    let errors = check_fail(code);
+    match &errors[0] {
+         SemanticError::SignatureMismatch(_) => {},
+         _ => panic!("Expected SignatureMismatch"),
+    }
+}
+
+#[test]
+fn test_condition_must_be_boolean() {
+    let code = "if (42) 1 else 0;";
+     let errors = check_fail(code);
+     assert!(!errors.is_empty());
+}
