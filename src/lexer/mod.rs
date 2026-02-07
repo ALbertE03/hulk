@@ -1,6 +1,9 @@
 pub mod tokens;
+pub mod errors;
 
+use crate::utils::Position;
 use tokens::Token;
+use errors::LexError;
 use std::str::Chars;
 use std::iter::Peekable;
 
@@ -8,19 +11,45 @@ use std::iter::Peekable;
 #[derive(Debug)]
 pub struct Lexer<'a> {
     chars: Peekable<Chars<'a>>,
+    line: usize,
+    column: usize,
 }
 
 impl<'a> Lexer<'a> {
     pub fn new(input: &'a str) -> Self {
         Self {
             chars: input.chars().peekable(),
+            line: 1,
+            column: 1,
         }
     }
 
+    fn current_pos(&self) -> Position {
+        Position {
+            line: self.line,
+            column: self.column,
+        }
+    }
+
+    fn next_char(&mut self) -> Option<char> {
+        let c = self.chars.next()?;
+        if c == '\n' {
+            self.line += 1;
+            self.column = 1;
+        } else {
+            self.column += 1;
+        }
+        Some(c)
+    }
+
+    fn peek_char(&mut self) -> Option<&char> {
+        self.chars.peek()
+    }
+
     fn skip_whitespace(&mut self) {
-        while let Some(&c) = self.chars.peek() {
+        while let Some(&c) = self.peek_char() {
             if c.is_whitespace() {
-                self.chars.next();
+                self.next_char();
             } else {
                 break;
             }
@@ -31,28 +60,28 @@ impl<'a> Lexer<'a> {
         let mut s = String::from(first);
         
         // integer part
-        while let Some(&c) = self.chars.peek() {
+        while let Some(&c) = self.peek_char() {
             if c.is_ascii_digit() {
                 s.push(c);
-                self.chars.next();
+                self.next_char();
             } else {
                 break;
             }
         }
 
         // Check for fractional part
-        if let Some(&'.') = self.chars.peek() {
+        if let Some(&'.') = self.peek_char() {
             // Need to see if next after dot is digit.
             let mut clone = self.chars.clone();
             clone.next(); // skip dot
             if let Some(&next_c) = clone.peek() {
                 if next_c.is_ascii_digit() {
                     s.push('.');
-                    self.chars.next(); // consume dot
-                    while let Some(&c) = self.chars.peek() {
+                    self.next_char(); // consume dot
+                    while let Some(&c) = self.peek_char() {
                         if c.is_ascii_digit() {
                             s.push(c);
-                            self.chars.next();
+                            self.next_char();
                         } else {
                             break;
                         }
@@ -64,12 +93,12 @@ impl<'a> Lexer<'a> {
         Token::Number(s.parse().unwrap_or(0.0))
     }
 
-    fn lex_string(&mut self) -> Token {
+    fn lex_string(&mut self, start_pos: Position) -> Result<Token, LexError> {
         // self.chars.next(); // consumed quote before calling
         let mut s = String::new();
         let mut escaped = false;
         
-        while let Some(c) = self.chars.next() {
+        while let Some(c) = self.next_char() {
             if escaped {
                 match c {
                     'n' => s.push('\n'),
@@ -83,21 +112,21 @@ impl<'a> Lexer<'a> {
             } else if c == '\\' {
                 escaped = true;
             } else if c == '"' {
-                return Token::StringLiteral(s);
+                return Ok(Token::StringLiteral(s));
             } else {
                 s.push(c);
             }
         }
         
-        Token::Unknown('"') // Unterminated string
+        Err(LexError::UnterminatedString(start_pos))
     }
 
     fn lex_identifier_or_keyword(&mut self, first: char) -> Token {
         let mut ident = String::from(first);
-        while let Some(&c) = self.chars.peek() {
+        while let Some(&c) = self.peek_char() {
             if c.is_alphanumeric() || c == '_' {
                 ident.push(c);
-                self.chars.next();
+                self.next_char();
             } else {
                 break;
             }
@@ -126,34 +155,34 @@ impl<'a> Lexer<'a> {
 }
 
 impl<'a> Iterator for Lexer<'a> {
-    type Item = Token;
+    type Item = Result<(Token, Position), LexError>;
 
     fn next(&mut self) -> Option<Self::Item> {
         self.skip_whitespace();
-
-        let c = self.chars.next()?;
+        let pos = self.current_pos();
+        let c = self.next_char()?;
 
         // Comments
         if c == '/' {
             // Check next
-            if let Some(&next_c) = self.chars.peek() {
+            if let Some(&next_c) = self.peek_char() {
                 if next_c == '/' {
                     // Line comment
-                    self.chars.next(); // consume /
+                    self.next_char(); // consume /
                     // skip until newline
-                    while let Some(x) = self.chars.next() {
+                    while let Some(x) = self.next_char() {
                         if x == '\n' { break; }
                     }
                     return self.next(); // Recursively call next to get actual token
                 } else if next_c == '*' {
                     // Block comment
-                    self.chars.next(); // consume *
+                    self.next_char(); // consume *
                     let mut terminated = false;
-                    while let Some(x) = self.chars.next() {
+                    while let Some(x) = self.next_char() {
                         if x == '*' {
-                            if let Some(&post_star) = self.chars.peek() {
+                            if let Some(&post_star) = self.peek_char() {
                                 if post_star == '/' {
-                                    self.chars.next(); // consume /
+                                    self.next_char(); // consume /
                                     terminated = true;
                                     break;
                                 }
@@ -161,103 +190,101 @@ impl<'a> Iterator for Lexer<'a> {
                         }
                     }
                     if !terminated {
-                        return Some(Token::EOF); // Or error
+                        return Some(Err(LexError::UnterminatedBlockComment(pos))); // Or error
                     }
                     return self.next();
                 }
             }
         }
 
-        let token = match c {
-            '0'..='9' => self.lex_number(c),
-            'a'..='z' | 'A'..='Z' | '_' => self.lex_identifier_or_keyword(c),
-            '"' => self.lex_string(),
-            '+' => Token::Plus,
+        let token_res = match c {
+            '0'..='9' => Ok(self.lex_number(c)),
+            'a'..='z' | 'A'..='Z' | '_' => Ok(self.lex_identifier_or_keyword(c)),
+            '"' => self.lex_string(pos),
+            '+' => Ok(Token::Plus),
             '-' => {
-                if let Some(&'>') = self.chars.peek() {
-                    self.chars.next();
-                    Token::Arrow // ->
+                if let Some(&'>') = self.peek_char() {
+                    self.next_char();
+                    Ok(Token::Arrow) // ->
                 } else {
-                    Token::Minus
+                    Ok(Token::Minus)
                 }
             },
-            '*' => Token::Star,
-            '/' => Token::Slash, // Comments handled above, so this is division
-            '%' => Token::Percent,
-            '^' => Token::Power,
+            '*' => Ok(Token::Star),
+            '/' => Ok(Token::Slash), // Comments handled above, so this is division
+            '%' => Ok(Token::Percent),
+            '^' => Ok(Token::Power),
             '=' => {
                 // = or == or =>
-                if let Some(&'=') = self.chars.peek() {
-                    self.chars.next();
-                    Token::Equal
-                } else if let Some(&'>') = self.chars.peek() {
-                    self.chars.next();
-                    Token::Arrow 
+                if let Some(&'=') = self.peek_char() {
+                    self.next_char();
+                    Ok(Token::Equal)
+                } else if let Some(&'>') = self.peek_char() {
+                    self.next_char();
+                    Ok(Token::Arrow) 
                 } else {
-                    Token::Assign
+                    Ok(Token::Assign)
                 }
             },
             ':' => {
-                 if let Some(&'=') = self.chars.peek() {
-                    self.chars.next();
-                    Token::DestructAssign // :=
+                 if let Some(&'=') = self.peek_char() {
+                    self.next_char();
+                    Ok(Token::DestructAssign) // :=
                 } else {
-                    Token::Colon
+                    Ok(Token::Colon)
                 }
             },
             '!' => {
-                if let Some(&'=') = self.chars.peek() {
-                    self.chars.next();
-                    Token::NotEqual
+                if let Some(&'=') = self.peek_char() {
+                    self.next_char();
+                    Ok(Token::NotEqual)
                 } else {
-                    Token::Not
+                    Ok(Token::Not)
                 }
             },
             '<' => {
-                if let Some(&'=') = self.chars.peek() {
-                    self.chars.next();
-                    Token::LessThanEq
+                if let Some(&'=') = self.peek_char() {
+                    self.next_char();
+                    Ok(Token::LessThanEq)
                 } else {
-                    Token::LessThan
+                    Ok(Token::LessThan)
                 }
             },
             '>' => {
-                 if let Some(&'=') = self.chars.peek() {
-                    self.chars.next();
-                    Token::GreaterThanEq
+                 if let Some(&'=') = self.peek_char() {
+                    self.next_char();
+                    Ok(Token::GreaterThanEq)
                 } else {
-                    Token::GreaterThan
+                    Ok(Token::GreaterThan)
                 }
             },
-            '&' => Token::And,
-            '|' => Token::Or,
+            '&' => Ok(Token::And),
+            '|' => Ok(Token::Or),
             '@' => {
-                if let Some(&'@') = self.chars.peek() {
-                    self.chars.next();
-                    Token::ConcatSpace
+                if let Some(&'@') = self.peek_char() {
+                    self.next_char();
+                    Ok(Token::ConcatSpace)
                 } else {
-                    Token::Concat
+                    Ok(Token::Concat)
                 }
             },
-            '(' => Token::LParen,
-            ')' => Token::RParen,
-            '{' => Token::LBrace,
-            '}' => Token::RBrace,
-            '[' => Token::LBracket,
-            ']' => Token::RBracket,
-            ',' => Token::Comma,
-            '.' => Token::Dot,
-            ';' => Token::Semicolon,
-            _ => Token::Unknown(c),
+            '(' => Ok(Token::LParen),
+            ')' => Ok(Token::RParen),
+            '{' => Ok(Token::LBrace),
+            '}' => Ok(Token::RBrace),
+            '[' => Ok(Token::LBracket),
+            ']' => Ok(Token::RBracket),
+            ',' => Ok(Token::Comma),
+            '.' => Ok(Token::Dot),
+            ';' => Ok(Token::Semicolon),
+            _ => Err(LexError::UnexpectedCharacter(c, pos)),
         };
 
 
-        Some(token)
+        Some(token_res.map(|t| (t, pos)))
     }
 }
 
 
 #[cfg(test)]
 mod tests;
-
-

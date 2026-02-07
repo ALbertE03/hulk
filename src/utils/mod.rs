@@ -1,15 +1,25 @@
-/// represented by a start and end byte offset.
-pub type Span = (usize, usize);
+use std::fmt;
 
-/// A wrapper that attaches a span to a node.
+#[derive(Debug, PartialEq, Clone, Copy)]
+pub struct Position {
+    pub line: usize,
+    pub column: usize,
+}
+
+impl fmt::Display for Position {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}:{}", self.line, self.column)
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct Spanned<T> {
     pub node: T,
-    pub span: Span,
+    pub pos: Position,
 }
 
 impl<T> Spanned<T> {
-    pub fn new(node: T, span: Span) -> Self {
-        Self { node, span }
+    pub fn new(node: T, pos: Position) -> Self {
+        Self { node, pos }
     }
 }
