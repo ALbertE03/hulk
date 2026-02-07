@@ -326,6 +326,20 @@ fn test_intensive_strings() {
 }
 
 #[test]
+fn test_function_block() {
+    let input = "function add(a, b) => { let result = a + b; result; }";
+    let tokens_res: Vec<_> = Lexer::new(input).collect();
+    let tokens: Vec<Token> = tokens_res.into_iter().map(|r| r.unwrap().0).collect();
+    
+    let expected = vec![
+        Function, Identifier("add".to_string()), LParen, Identifier("a".to_string()), Comma, Identifier("b".to_string()), RParen, Arrow,
+        LBrace, Let, Identifier("result".to_string()), Assign, Identifier("a".to_string()), Plus, Identifier("b".to_string()), Semicolon,
+        Identifier("result".to_string()), Semicolon, RBrace
+    ];
+    assert_eq!(tokens, expected);
+}
+
+#[test]
 fn test_nested_calls_and_access() {
     let input = "math.sin(math.pi * person.age().value);";
     let tokens_res: Vec<_> = Lexer::new(input).collect();
