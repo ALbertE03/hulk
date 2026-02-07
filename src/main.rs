@@ -39,6 +39,21 @@ fn main() {
            // println!("\nDebug Representation (Internal structure):\n");
             //println!("{:#?}", expanded);
             
+            // Análisis Semántico
+            println!("\n=== ANÁLISIS SEMÁNTICO ===\n");
+            match hulk_compiler::semantic::check_program(&expanded) {
+                 Ok(context) => {
+                     println!("Semantic check passed!");
+                     println!("Defined types: {:?}", context.types.keys());
+                 },
+                 Err(errors) => {
+                     println!("Semantic errors found:");
+                     for err in errors {
+                         println!("{:?}", err);
+                     }
+                 }
+            }
+
             // Optimizar
             let optimized = optimize_program(expanded);
             
