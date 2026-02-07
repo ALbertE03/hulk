@@ -3,7 +3,7 @@ use hulk_compiler::parser::Parser;
 fn main() {
     println!("--- HULK AST Visualization ---\n");
 
-    let input = r#"
+    let _input = r#"
         protocol Hashable {
             hash(): Number;
         }
@@ -34,8 +34,8 @@ fn main() {
             print("Random: " @ rand());
         }
     "#;
-
-    let mut parser = Parser::new(input);
+    let a = "function () => 1;";
+    let mut parser = Parser::new(a);
     match parser.parse_program() {
         Ok(program) => {
             println!("Parsed successfully!\n");

@@ -10,6 +10,7 @@ pub enum ParseError {
     },
     UnexpectedEOF(Position),
     InvalidExpression(Position),
+    Lex(crate::errors::LexError),
 }
 
 impl fmt::Display for ParseError {
@@ -20,6 +21,7 @@ impl fmt::Display for ParseError {
             }
             ParseError::UnexpectedEOF(pos) => write!(f, "Unexpected end of file at {}", pos),
             ParseError::InvalidExpression(pos) => write!(f, "Invalid expression at {}", pos),
+            ParseError::Lex(err) => write!(f, "{}", err),
         }
     }
 }

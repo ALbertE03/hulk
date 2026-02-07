@@ -5,7 +5,7 @@ use crate::errors::ParseError;
 use crate::ast::nodes::*;
 
 pub struct Parser {
-    tokens: Vec<(Token, Position)>,
+    tokens: Vec<Result<(Token, Position), crate::errors::LexError>>,
     current: usize,
 }
 
@@ -14,17 +14,21 @@ impl Parser {
         let mut lexer = Lexer::new(input);
         let mut tokens = Vec::new();
         while let Some(res) = lexer.next() {
-            match res {
-                Ok(pair) => tokens.push(pair),
-                Err(_) => {
-                    // For now, ignore lexer errors or push an Unknown token
-                    // Better to handle them properly later
-                }
-            }
+            tokens.push(res);
         }
         
-        if tokens.last().map(|(t, _)| t != &Token::EOF).unwrap_or(true) {
-            tokens.push((Token::EOF, tokens.last().map(|(_, p)| p.clone()).unwrap_or(Position { line: 1, column: 1 })));
+        let last_is_eof = matches!(tokens.last(), Some(Ok((Token::EOF, _))));
+        if !last_is_eof {
+            let last_pos = match tokens.last() {
+                Some(Ok((_, p))) => p.clone(),
+                Some(Err(e)) => match e {
+                    crate::errors::LexError::UnterminatedString(p) => p.clone(),
+                    crate::errors::LexError::UnterminatedBlockComment(p) => p.clone(),
+                    crate::errors::LexError::UnexpectedCharacter(_, p) => p.clone(),
+                },
+                None => Position { line: 1, column: 1 },
+            };
+            tokens.push(Ok((Token::EOF, last_pos)));
         }
 
         Self {
@@ -36,22 +40,29 @@ impl Parser {
     fn advance(&mut self) -> Result<(Token, Position), ParseError> {
         if self.current < self.tokens.len() {
             let res = self.tokens[self.current].clone();
-            if res.0 != Token::EOF {
-                self.current += 1;
+            match &res {
+                Ok((t, _)) => {
+                    if *t != Token::EOF {
+                        self.current += 1;
+                    }
+                }
+                Err(_) => {
+                    self.current += 1;
+                }
             }
-            Ok(res)
+            res.map_err(ParseError::Lex)
         } else {
             Err(ParseError::UnexpectedEOF(self.peek_pos()))
         }
     }
 
-    fn peek(&self) -> Option<&(Token, Position)> {
+    fn peek(&self) -> Option<&Result<(Token, Position), crate::errors::LexError>> {
         self.tokens.get(self.current)
     }
 
     fn check(&self, token: &Token) -> bool {
         match self.peek() {
-            Some((t, _)) => t == token,
+            Some(Ok((t, _))) => t == token,
             _ => false,
         }
     }
@@ -66,12 +77,15 @@ impl Parser {
     }
 
     fn consume(&mut self, token: &Token, message: &str) -> Result<(Token, Position), ParseError> {
-        if self.check(token) {
-            self.advance()
-        } else {
-            Err(ParseError::UnexpectedToken {
+        match self.peek() {
+            Some(Ok((t, _))) if t == token => self.advance(),
+            Some(Err(_)) => self.advance(), // This will return ParseError::Lex
+            _ => Err(ParseError::UnexpectedToken {
                 expected: message.to_string(),
-                found: format!("{:?}", self.peek().map(|(t, _)| t)),
+                found: format!("{:?}", self.peek().map(|r| match r {
+                    Ok((t, _)) => format!("{:?}", t),
+                    Err(e) => format!("LexError: {:?}", e),
+                })),
                 pos: self.peek_pos(),
             })
         }
@@ -79,13 +93,26 @@ impl Parser {
 
     fn peek_pos(&self) -> Position {
         self.tokens.get(self.current)
+            .and_then(|r| r.as_ref().ok())
             .map(|(_, p)| p.clone())
-            .unwrap_or_else(|| self.tokens.last().map(|(_, p)| p.clone()).unwrap_or(Position { line: 1, column: 1 }))
+            .unwrap_or_else(|| {
+                self.tokens.last()
+                    .and_then(|r| match r {
+                        Ok((_, p)) => Some(p.clone()),
+                        Err(e) => match e {
+                            crate::errors::LexError::UnterminatedString(p) => Some(p.clone()),
+                            crate::errors::LexError::UnterminatedBlockComment(p) => Some(p.clone()),
+                            crate::errors::LexError::UnexpectedCharacter(_, p) => Some(p.clone()),
+                        },
+                    })
+                    .unwrap_or(Position { line: 1, column: 1 })
+            })
     }
 
     fn peek_description(&self) -> String {
         match self.peek() {
-            Some((t, _)) => format!("{:?}", t),
+            Some(Ok((t, _))) => format!("{:?}", t),
+            Some(Err(e)) => format!("LexError: {:?}", e),
             None => "EOF".to_string(),
         }
     }
@@ -339,7 +366,7 @@ impl Parser {
 
     fn peek_precedence(&self) -> Precedence {
         match self.peek() {
-            Some((t, _)) => self.token_to_precedence(t),
+            Some(Ok((t, _))) => self.token_to_precedence(t),
             _ => Precedence::Lowest
         }
     }
@@ -594,7 +621,7 @@ impl Parser {
     }
 
     fn at_end(&self) -> bool {
-        self.current >= self.tokens.len() || self.tokens[self.current].0 == Token::EOF
+        self.current >= self.tokens.len() || matches!(self.tokens[self.current], Ok((Token::EOF, _)))
     }
 
     fn is_expr_start(&self) -> bool {
@@ -737,8 +764,8 @@ impl Parser {
             } else {
                 // Could be a method without 'function' keyword or an attribute
                 // Lookahead to check if it's name(...)
-                let is_method = if let Some((Token::Identifier(_), _)) = self.peek() {
-                    if let Some((Token::LParen, _)) = self.tokens.get(self.current + 1) {
+                let is_method = if let Some(Ok((Token::Identifier(_), _))) = self.peek() {
+                    if let Some(Ok((Token::LParen, _))) = self.tokens.get(self.current + 1) {
                         true
                     } else {
                         false

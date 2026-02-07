@@ -1279,3 +1279,47 @@ fn test_parse_integral_program() {
     let program = parser.parse_program().expect("Failed to parse integral program");
     assert_eq!(program, expected);
 }
+
+#[test]
+fn test_parse_error_missing_function_name() {
+    let input = "function () => 1;"; 
+    let mut parser = Parser::new(input);
+    let result = parser.parse_program();
+    
+    match result {
+        Err(ParseError::UnexpectedToken { found, .. }) => {
+            assert!(found.contains("LParen"), "Expected error to find LParen instead of function name, got {}", found);
+        }
+        _ => panic!("Expected UnexpectedToken error for missing function name, got {:?}", result),
+    }
+}
+
+#[test]
+fn test_parse_error_unclosed_parenthesis() {
+    let input = "print(1 + 2";
+    let mut parser = Parser::new(input);
+    let result = parser.parse_program();
+
+    match result {
+        Err(ParseError::UnexpectedToken { expected, found, pos }) => {
+            assert!(expected.contains(")"), "Expected error message to mention closing parenthesis");
+            assert_eq!(found, "Some(\"EOF\")"); 
+            assert_eq!(pos, pos!(1, 11));
+        }
+        _ => panic!("Expected UnexpectedToken error for unclosed parenthesis, got {:?}", result),
+    }
+}
+
+#[test]
+fn test_parse_error_lexer_unterminated_string() {
+    let input = "print(\"hello";
+    let mut parser = Parser::new(input);
+    let result = parser.parse_program();
+
+    match result {
+        Err(ParseError::Lex(crate::errors::LexError::UnterminatedString(pos))) => {
+            assert_eq!(pos, pos!(1, 7));
+        }
+        _ => panic!("Expected Lex UnterminatedString error, got {:?}", result),
+    }
+}
