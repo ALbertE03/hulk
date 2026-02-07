@@ -168,8 +168,8 @@ impl<'a> Iterator for Lexer<'a> {
     type Item = Result<(Token, Position), LexError>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        /// Produce el siguiente `Token` con su posición o un `LexError`.
-        /// Maneja comentarios, literales, operadores y caracteres inesperados.
+        // Produce el siguiente `Token` con su posición o un `LexError`.
+        // Maneja comentarios, literales, operadores y caracteres inesperados.
         self.skip_whitespace();
         let pos = self.current_pos();
         let c = self.next_char()?;
