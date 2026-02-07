@@ -1,6 +1,6 @@
 #[derive(Debug, PartialEq, Clone)]
 pub enum Token {
-    // Keywords
+    // Palabras clave
     Function,
     Let,
     If,
@@ -19,17 +19,17 @@ pub enum Token {
     Print, 
     True,
     False,
-    In, // for 'for x in ...'
+    In, // para 'for x in ...'
 
-    // Identifiers
+    // Identificadores
     Identifier(String),
 
-    // Literals
+    // Literales
     Number(f64),
     StringLiteral(String),
 
-    // Operators
-    // Arithmetic
+    // Operadores
+    // Aritmética
     Plus,       // +
     Minus,      // -
     Star,       // *
@@ -37,7 +37,7 @@ pub enum Token {
     Percent,    // %
     Power,      // ^ 
     
-    // Comparison
+    // Comparación
     Equal,          // ==
     NotEqual,       // !=
     LessThan,       // <
@@ -45,22 +45,22 @@ pub enum Token {
     LessThanEq,     // <=
     GreaterThanEq,  // >=
 
-    // Logical
+    // Lógico
     And,    // &
     Or,     // |
     Not,    // !
 
-    // String
+    // Cadenas
     Concat,         // @
     ConcatSpace,    // @@
 
-    // Assignment / Definition
+    // Asignación / Definición
     Assign,         // =
     DestructAssign, // :=
     FuncArrow,      // => 
     TypeArrow,      // ->
     
-    // Punctuation
+    // Puntuación
     LParen,     // (
     RParen,     // )
     LBrace,     // {
@@ -72,7 +72,7 @@ pub enum Token {
     Dot,        // .
     Semicolon,  // ;
 
-    // Special
+    // Especial
     EOF,
     Unknown(char),
 }

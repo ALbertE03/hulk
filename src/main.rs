@@ -34,7 +34,7 @@ fn main() {
             print("Random: " @ rand());
         }
     "#;
-    let a = "function () => 1;";
+    let a = "(-2)^2";
     let mut parser = Parser::new(a);
     match parser.parse_program() {
         Ok(program) => {

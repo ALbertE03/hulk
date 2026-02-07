@@ -10,6 +10,8 @@ pub struct Parser {
 }
 
 impl Parser {
+    /// Crea un nuevo `Parser` a partir de la cadena de entrada.
+    /// Inicializa el lexer, recopila tokens y asegura un EOF final.
     pub fn new(input: &str) -> Self {
         let mut lexer = Lexer::new(input);
         let mut tokens = Vec::new();
@@ -37,6 +39,8 @@ impl Parser {
         }
     }
 
+    /// Avanza y retorna el siguiente token junto con su posición.
+    /// Convierte errores léxicos en `ParseError::Lex`.
     fn advance(&mut self) -> Result<(Token, Position), ParseError> {
         if self.current < self.tokens.len() {
             let res = self.tokens[self.current].clone();
@@ -56,10 +60,12 @@ impl Parser {
         }
     }
 
+    /// Mira el token actual sin consumirlo.
     fn peek(&self) -> Option<&Result<(Token, Position), crate::errors::LexError>> {
         self.tokens.get(self.current)
     }
 
+    /// Comprueba si el token actual coincide con `token`.
     fn check(&self, token: &Token) -> bool {
         match self.peek() {
             Some(Ok((t, _))) => t == token,
@@ -67,6 +73,7 @@ impl Parser {
         }
     }
 
+    /// Si el token actual coincide con `token`, lo consume y devuelve `true`.
     fn match_token(&mut self, token: &Token) -> bool {
         if self.check(token) {
             self.advance().unwrap();
@@ -76,10 +83,11 @@ impl Parser {
         }
     }
 
+    /// Consume el token esperado o devuelve un `ParseError` con `message`.
     fn consume(&mut self, token: &Token, message: &str) -> Result<(Token, Position), ParseError> {
         match self.peek() {
             Some(Ok((t, _))) if t == token => self.advance(),
-            Some(Err(_)) => self.advance(), // This will return ParseError::Lex
+            Some(Err(_)) => self.advance(),
             _ => Err(ParseError::UnexpectedToken {
                 expected: message.to_string(),
                 found: format!("{:?}", self.peek().map(|r| match r {
@@ -91,6 +99,7 @@ impl Parser {
         }
     }
 
+    /// Devuelve la posición del token actual o la última posición conocida.
     fn peek_pos(&self) -> Position {
         self.tokens.get(self.current)
             .and_then(|r| r.as_ref().ok())
@@ -109,6 +118,7 @@ impl Parser {
             })
     }
 
+    /// Devuelve una descripción textual del token actual (o del error léxico).
     fn peek_description(&self) -> String {
         match self.peek() {
             Some(Ok((t, _))) => format!("{:?}", t),
@@ -117,8 +127,9 @@ impl Parser {
         }
     }
 
-    // --- Core Parsing ---
+    // --- Análisis principal ---
 
+    /// Analiza un programa completo y devuelve el `Program` AST.
     pub fn parse_program(&mut self) -> Result<Program, ParseError> {
         let mut declarations = Vec::new();
 
@@ -127,7 +138,6 @@ impl Parser {
         }
 
         let expr = if self.at_end() {
-            // Default to empty block if no expression is provided (valid in some contexts/tests)
             Spanned::new(Expr::Block(Vec::new()), self.peek_pos())
         } else {
             let e = self.parse_spanned_expr(Precedence::Lowest)?;
@@ -135,12 +145,21 @@ impl Parser {
             e
         };
 
+        if !self.at_end() {
+            return Err(ParseError::UnexpectedToken {
+                expected: "end of file".to_string(),
+                found: self.peek_description(),
+                pos: self.peek_pos(),
+            });
+        }
+
         Ok(Program {
             declarations,
             expr,
         })
     }
 
+    /// Analiza una declaración (función, tipo o protocolo) y la devuelve.
     fn parse_declaration(&mut self) -> Result<Declaration, ParseError> {
         if self.match_token(&Token::Function) {
             Ok(Declaration::Function(self.parse_function_decl()?))
@@ -158,8 +177,9 @@ impl Parser {
         }
     }
 
-    // --- Expression Parsing (Pratt Parser) ---
+    // --- Análisis de expresiones ---
 
+    /// Analiza una expresión respetando la precedencia y devuelve un `Spanned<Expr>`.
     fn parse_spanned_expr(&mut self, precedence: Precedence) -> Result<Spanned<Expr>, ParseError> {
         let mut left = self.parse_prefix()?;
 
@@ -170,6 +190,7 @@ impl Parser {
         Ok(left)
     }
 
+    /// Analiza expresiones prefijas (literales, identificadores, unarios, etc.).
     fn parse_prefix(&mut self) -> Result<Spanned<Expr>, ParseError> {
         let (token, pos) = self.advance()?;
         match token {
@@ -182,36 +203,36 @@ impl Parser {
                     "PI" => Ok(Spanned::new(Expr::PI, pos)),
                     "E" => Ok(Spanned::new(Expr::E, pos)),
                     "rand" if self.check(&Token::LParen) => {
-                        self.advance()?; // (
+                        self.advance()?; // consumir '('
                         self.consume(&Token::RParen, "Expected ')' after rand")?;
                         Ok(Spanned::new(Expr::Rand, pos))
                     }
                     "sqrt" if self.check(&Token::LParen) => {
-                        self.advance()?; // (
+                        self.advance()?; // consumir '('
                         let val = self.parse_spanned_expr(Precedence::Lowest)?;
                         self.consume(&Token::RParen, "Expected ')' after sqrt arguments")?;
                         Ok(Spanned::new(Expr::Sqrt(Box::new(val)), pos))
                     }
                     "sin" if self.check(&Token::LParen) => {
-                        self.advance()?; // (
+                        self.advance()?; // consumir '('
                         let val = self.parse_spanned_expr(Precedence::Lowest)?;
                         self.consume(&Token::RParen, "Expected ')' after sin arguments")?;
                         Ok(Spanned::new(Expr::Sin(Box::new(val)), pos))
                     }
                     "cos" if self.check(&Token::LParen) => {
-                        self.advance()?; // (
+                        self.advance()?; // consumir '('
                         let val = self.parse_spanned_expr(Precedence::Lowest)?;
                         self.consume(&Token::RParen, "Expected ')' after cos arguments")?;
                         Ok(Spanned::new(Expr::Cos(Box::new(val)), pos))
                     }
                     "exp" if self.check(&Token::LParen) => {
-                        self.advance()?; // (
+                        self.advance()?; // consumir '('
                         let val = self.parse_spanned_expr(Precedence::Lowest)?;
                         self.consume(&Token::RParen, "Expected ')' after exp arguments")?;
                         Ok(Spanned::new(Expr::Exp(Box::new(val)), pos))
                     }
                     "log" if self.check(&Token::LParen) => {
-                        self.advance()?; // (
+                        self.advance()?; // consumir '('
                         let base = self.parse_spanned_expr(Precedence::Lowest)?;
                         self.consume(&Token::Comma, "Expected ',' between log arguments")?;
                         let val = self.parse_spanned_expr(Precedence::Lowest)?;
@@ -269,11 +290,10 @@ impl Parser {
         }
     }
 
+    /// Determina si el paréntesis abre una lambda o una expresión agrupada y la analiza.
     fn parse_lambda_or_parenthesized(&mut self, pos: Position) -> Result<Spanned<Expr>, ParseError> {
         let start_index = self.current;
         
-        // Try parsing as lambda first
-        // Note: we already consumed '('
         let params = self.parse_params();
         if let Ok(p) = params {
             if self.match_token(&Token::RParen) {
@@ -294,13 +314,13 @@ impl Parser {
             }
         }
 
-        // Backtrack and parse as grouped expression
         self.current = start_index;
         let expr = self.parse_spanned_expr(Precedence::Lowest)?;
         self.consume(&Token::RParen, "Expected ')' after grouping")?;
         Ok(expr)
     }
 
+    /// Analiza operadores infijos y construye expresiones binarias, llamadas, accesos, etc.
     fn parse_infix(&mut self, left: Spanned<Expr>) -> Result<Spanned<Expr>, ParseError> {
         let (token, pos) = self.advance()?;
         
@@ -347,12 +367,8 @@ impl Parser {
             _ => {
                 let op = self.token_to_op(&token).ok_or(ParseError::InvalidExpression(pos))?;
                 let precedence = self.op_precedence(&op);
-                // Precedence threshold for recursive call
-                // Left-associative: threshold is current op precedence (so it stops at same precedence)
-                // Right-associative: threshold is one level BELOW current op precedence (so it continues at same precedence)
                 let next_precedence = if op == Op::Pow {
-                    // Right associative: Power is higher than Product
-                    Precedence::Product
+                    Precedence::Unary
                 } else {
                     precedence
                 };
@@ -364,6 +380,7 @@ impl Parser {
         }
     }
 
+    /// Obtiene la precedencia del token actual para decidir asociaciones.
     fn peek_precedence(&self) -> Precedence {
         match self.peek() {
             Some(Ok((t, _))) => self.token_to_precedence(t),
@@ -371,6 +388,7 @@ impl Parser {
         }
     }
 
+    /// Convierte un `Token` en su precedencia correspondiente.
     fn token_to_precedence(&self, token: &Token) -> Precedence {
         match token {
             Token::LParen => Precedence::Call,
@@ -389,6 +407,7 @@ impl Parser {
 
     // --- Specific Expression Parsers ---
 
+    /// Analiza una expresión `let` con sus enlaces y el cuerpo asociado.
     fn parse_let_expr(&mut self, pos: Position) -> Result<Spanned<Expr>, ParseError> {
         let mut bindings = Vec::new();
         loop {
@@ -422,6 +441,7 @@ impl Parser {
         Ok(Spanned::new(Expr::Let { bindings, body: Box::new(body) }, pos))
     }
 
+    /// Analiza una expresión `if` (condición, then y else/elif).
     fn parse_if_expr(&mut self, pos: Position) -> Result<Spanned<Expr>, ParseError> {
         self.consume(&Token::LParen, "Expected '(' after if")?;
         let cond = self.parse_spanned_expr(Precedence::Lowest)?;
@@ -432,7 +452,7 @@ impl Parser {
         let else_expr = if self.match_token(&Token::Else) {
             self.parse_spanned_expr(Precedence::Lowest)?
         } else if self.match_token(&Token::Elif) {
-            // Hulk doesn't have elif in AST usually, it's just nested if
+            // Hulk normalmente no tiene 'elif' en el AST; se representa como if anidado
             self.parse_if_expr(self.peek_pos())?
         } else {
             return Err(ParseError::UnexpectedToken {
@@ -449,6 +469,7 @@ impl Parser {
         }, pos))
     }
 
+    /// Analiza una expresión `while` con su condición y cuerpo.
     fn parse_while_expr(&mut self, pos: Position) -> Result<Spanned<Expr>, ParseError> {
         self.consume(&Token::LParen, "Expected '(' after while")?;
         let cond = self.parse_spanned_expr(Precedence::Lowest)?;
@@ -462,6 +483,7 @@ impl Parser {
         }, pos))
     }
 
+    /// Analiza una expresión `for` (variable, iterable y cuerpo).
     fn parse_for_expr(&mut self, pos: Position) -> Result<Spanned<Expr>, ParseError> {
         self.consume(&Token::LParen, "Expected '(' after for")?;
         
@@ -487,17 +509,18 @@ impl Parser {
         }, pos))
     }
 
+    /// Analiza un bloque `{ ... }` y devuelve una expresión de bloque.
     fn parse_block_expr(&mut self, pos: Position) -> Result<Spanned<Expr>, ParseError> {
         let mut exprs = Vec::new();
         while !self.check(&Token::RBrace) && !self.at_end() {
             exprs.push(self.parse_spanned_expr(Precedence::Lowest)?);
-            // Semicolons are usually separators in HULK blocks
             let _ = self.match_token(&Token::Semicolon);
         }
         self.consume(&Token::RBrace, "Expected '}' after block")?;
         Ok(Spanned::new(Expr::Block(exprs), pos))
     }
 
+    /// Analiza la instanciación de un tipo `Type(args...)`.
     fn parse_instantiation_expr(&mut self, pos: Position) -> Result<Spanned<Expr>, ParseError> {
         let ty = match self.advance()?.0 {
             Token::Identifier(n) => n,
@@ -523,17 +546,16 @@ impl Parser {
         Ok(Spanned::new(Expr::Instantiation { ty, args }, pos))
     }
 
+    /// Analiza literales de vectores y generadores de vectores.
     fn parse_vector_expr(&mut self, pos: Position) -> Result<Spanned<Expr>, ParseError> {
         if self.check(&Token::RBracket) {
             self.advance()?;
             return Ok(Spanned::new(Expr::VectorLiteral(Vec::new()), pos));
         }
 
-        // Use Precedence::Or to stop at the '|' symbol if it's a generator
         let first = self.parse_spanned_expr(Precedence::Or)?;
 
         if self.match_token(&Token::Or) {
-            // It's a generator: [expr | var in iterable]
             let var = match self.advance()?.0 {
                 Token::Identifier(n) => n,
                 t => return Err(ParseError::UnexpectedToken {
@@ -553,7 +575,6 @@ impl Parser {
                 iterable: Box::new(iterable),
             }, pos))
         } else {
-            // It's a literal: [e1, e2, ...]
             let mut exprs = vec![first];
             while self.match_token(&Token::Comma) {
                 exprs.push(self.parse_spanned_expr(Precedence::Lowest)?);
@@ -563,6 +584,7 @@ impl Parser {
         }
     }
 
+    /// Analiza una llamada de función a partir de la expresión izquierda.
     fn parse_call_expr(&mut self, left: Spanned<Expr>, _pos: Position) -> Result<Spanned<Expr>, ParseError> {
         let func_name = match left.node {
             Expr::Identifier(n) => n,
@@ -587,6 +609,7 @@ impl Parser {
         Ok(Spanned::new(Expr::Call { func: func_name, args }, left.pos))
     }
 
+    /// Analiza acceso a miembro o llamada de método (`obj.member` o `obj.member(...)`).
     fn parse_member_access(&mut self, left: Spanned<Expr>, pos: Position) -> Result<Spanned<Expr>, ParseError> {
         let name = match self.advance()?.0 {
             Token::Identifier(n) => n,
@@ -614,20 +637,24 @@ impl Parser {
         }
     }
 
+    /// Analiza indexación `obj[index]` y devuelve la expresión correspondiente.
     fn parse_indexing_expr(&mut self, left: Spanned<Expr>, pos: Position) -> Result<Spanned<Expr>, ParseError> {
         let index = self.parse_spanned_expr(Precedence::Lowest)?;
         self.consume(&Token::RBracket, "Expected ']' after index")?;
         Ok(Spanned::new(Expr::Indexing { obj: Box::new(left), index: Box::new(index) }, pos))
     }
 
+    /// Indica si se ha alcanzado el final de los tokens (EOF).
     fn at_end(&self) -> bool {
         self.current >= self.tokens.len() || matches!(self.tokens[self.current], Ok((Token::EOF, _)))
     }
 
+    /// Determina si la posición actual pertenece al inicio de una expresión.
     fn is_expr_start(&self) -> bool {
         !self.check(&Token::Function) && !self.check(&Token::Type) && !self.check(&Token::Protocol)
     }
 
+    /// Convierte un `Token` de operador en el enum `Op` correspondiente.
     fn token_to_op(&self, token: &Token) -> Option<Op> {
         match token {
             Token::Plus => Some(Op::Add),
@@ -650,6 +677,7 @@ impl Parser {
         }
     }
 
+    /// Devuelve la precedencia asociada a una operación `Op`.
     fn op_precedence(&self, op: &Op) -> Precedence {
         match op {
             Op::Or => Precedence::Or,
@@ -664,6 +692,7 @@ impl Parser {
 
     // --- Declaration Parsers ---
 
+    /// Analiza la declaración de una función y devuelve su `FunctionDecl`.
     fn parse_function_decl(&mut self) -> Result<FunctionDecl, ParseError> {
         let name = match self.advance()?.0 {
             Token::Identifier(n) => n,
@@ -692,7 +721,7 @@ impl Parser {
             let pos = self.peek_pos();
             self.consume(&Token::LBrace, "Expected '=>' or '{' for function body")?;
             let b = self.parse_block_expr(pos)?;
-            self.match_token(&Token::Semicolon); // Optional semicolon after }
+            self.match_token(&Token::Semicolon); 
             b
         };
 
@@ -704,6 +733,7 @@ impl Parser {
         })
     }
 
+    /// Analiza la declaración de un tipo (atributos y métodos) y la devuelve.
     fn parse_type_decl(&mut self) -> Result<TypeDecl, ParseError> {
         let name = match self.advance()?.0 {
             Token::Identifier(n) => n,
@@ -762,8 +792,6 @@ impl Parser {
             if self.match_token(&Token::Function) {
                 methods.push(self.parse_function_decl()?);
             } else {
-                // Could be a method without 'function' keyword or an attribute
-                // Lookahead to check if it's name(...)
                 let is_method = if let Some(Ok((Token::Identifier(_), _))) = self.peek() {
                     if let Some(Ok((Token::LParen, _))) = self.tokens.get(self.current + 1) {
                         true
@@ -813,6 +841,7 @@ impl Parser {
         })
     }
 
+    /// Analiza la declaración de un protocolo y devuelve su firma.
     fn parse_protocol_decl(&mut self) -> Result<ProtocolDecl, ParseError> {
         let name = match self.advance()?.0 {
             Token::Identifier(n) => n,
@@ -869,6 +898,7 @@ impl Parser {
         })
     }
 
+    /// Analiza anotaciones de tipo (nombres, funciones y iterables).
     fn parse_type_annotation(&mut self) -> Result<TypeAnnotation, ParseError> {
         if self.match_token(&Token::LParen) {
             let mut params = Vec::new();
@@ -905,6 +935,7 @@ impl Parser {
         }
     }
 
+    /// Analiza una lista de parámetros dentro de paréntesis y devuelve `Vec<Param>`.
     fn parse_params(&mut self) -> Result<Vec<Param>, ParseError> {
         let mut params = Vec::new();
         if !self.check(&Token::RParen) {
@@ -945,8 +976,8 @@ enum Precedence {
     Concat,
     Sum,
     Product,
-    Power,
     Unary,
+    Power,
     Call,
 }
 

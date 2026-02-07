@@ -15,6 +15,7 @@ pub struct Lexer<'a> {
 }
 
 impl<'a> Lexer<'a> {
+    /// Crea un nuevo `Lexer` para la entrada dada, preparando el iterador de caracteres.
     pub fn new(input: &'a str) -> Self {
         Self {
             chars: input.chars().peekable(),
@@ -23,6 +24,7 @@ impl<'a> Lexer<'a> {
         }
     }
 
+    /// Devuelve la posición actual (línea y columna) del lexer.
     fn current_pos(&self) -> Position {
         Position {
             line: self.line,
@@ -30,6 +32,7 @@ impl<'a> Lexer<'a> {
         }
     }
 
+    /// Consume y devuelve el siguiente carácter, actualizando línea/columna.
     fn next_char(&mut self) -> Option<char> {
         let c = self.chars.next()?;
         if c == '\n' {
@@ -41,10 +44,12 @@ impl<'a> Lexer<'a> {
         Some(c)
     }
 
+    /// Devuelve una referencia al siguiente carácter sin consumirlo.
     fn peek_char(&mut self) -> Option<&char> {
         self.chars.peek()
     }
 
+    /// Omite espacios en blanco y no produce tokens por ellos.
     fn skip_whitespace(&mut self) {
         while let Some(&c) = self.peek_char() {
             if c.is_whitespace() {
@@ -55,10 +60,11 @@ impl<'a> Lexer<'a> {
         }
     }
 
+    /// Analiza un número (entero o con fracción) empezando por `first`.
     fn lex_number(&mut self, first: char) -> Token {
         let mut s = String::from(first);
         
-        // integer part
+        // parte entera
         while let Some(&c) = self.peek_char() {
             if c.is_ascii_digit() {
                 s.push(c);
@@ -68,15 +74,15 @@ impl<'a> Lexer<'a> {
             }
         }
 
-        // Check for fractional part
+        // Comprobar parte fraccionaria
         if let Some(&'.') = self.peek_char() {
-            // Need to see if next after dot is digit.
+            // Verificar si tras el punto hay un dígito.
             let mut clone = self.chars.clone();
-            clone.next(); // skip dot
+            clone.next(); // omitir punto
             if let Some(&next_c) = clone.peek() {
                 if next_c.is_ascii_digit() {
                     s.push('.');
-                    self.next_char(); // consume dot
+                    self.next_char(); // consumir punto
                     while let Some(&c) = self.peek_char() {
                         if c.is_ascii_digit() {
                             s.push(c);
@@ -92,8 +98,9 @@ impl<'a> Lexer<'a> {
         Token::Number(s.parse().unwrap_or(0.0))
     }
 
+    /// Analiza una cadena literal, manejando escapes; devuelve error si no se cierra.
     fn lex_string(&mut self, start_pos: Position) -> Result<Token, LexError> {
-        // self.chars.next(); // consumed quote before calling
+        // self.chars.next(); // comilla consumida antes de llamar
         let mut s = String::new();
         let mut escaped = false;
         
@@ -120,6 +127,7 @@ impl<'a> Lexer<'a> {
         Err(LexError::UnterminatedString(start_pos))
     }
 
+    /// Analiza un identificador o palabra clave empezando por `first`.
     fn lex_identifier_or_keyword(&mut self, first: char) -> Token {
         let mut ident = String::from(first);
         while let Some(&c) = self.peek_char() {
@@ -160,31 +168,33 @@ impl<'a> Iterator for Lexer<'a> {
     type Item = Result<(Token, Position), LexError>;
 
     fn next(&mut self) -> Option<Self::Item> {
+        /// Produce el siguiente `Token` con su posición o un `LexError`.
+        /// Maneja comentarios, literales, operadores y caracteres inesperados.
         self.skip_whitespace();
         let pos = self.current_pos();
         let c = self.next_char()?;
 
-        // Comments
+        // Comentarios
         if c == '/' {
-            // Check next
+            // Comprobar siguiente
             if let Some(&next_c) = self.peek_char() {
                 if next_c == '/' {
-                    // Line comment
-                    self.next_char(); // consume /
-                    // skip until newline
+                    // Comentario de línea
+                    self.next_char(); // consumir /
+                    // omitir hasta nueva línea
                     while let Some(x) = self.next_char() {
                         if x == '\n' { break; }
                     }
-                    return self.next(); // Recursively call next to get actual token
+                    return self.next(); // Llamar recursivamente a next para obtener el token real
                 } else if next_c == '*' {
-                    // Block comment
-                    self.next_char(); // consume *
+                    // Comentario de bloque
+                    self.next_char(); // consumir *
                     let mut terminated = false;
                     while let Some(x) = self.next_char() {
                         if x == '*' {
                             if let Some(&post_star) = self.peek_char() {
                                 if post_star == '/' {
-                                    self.next_char(); // consume /
+                                    self.next_char(); // consumir /
                                     terminated = true;
                                     break;
                                 }
@@ -192,7 +202,7 @@ impl<'a> Iterator for Lexer<'a> {
                         }
                     }
                     if !terminated {
-                        return Some(Err(LexError::UnterminatedBlockComment(pos))); // Or error
+                        return Some(Err(LexError::UnterminatedBlockComment(pos))); // O devolver error
                     }
                     return self.next();
                 }
@@ -215,16 +225,16 @@ impl<'a> Iterator for Lexer<'a> {
             '*' => {
                 if let Some(&'*') = self.peek_char() {
                     self.next_char();
-                    Ok(Token::Power) // ** as alias for ^
+                    Ok(Token::Power) // ** como alias de ^
                 } else {
                     Ok(Token::Star)
                 }
             },
-            '/' => Ok(Token::Slash), // Comments handled above, so this is division
+            '/' => Ok(Token::Slash), // Comentarios manejados arriba, por lo que esto es división
             '%' => Ok(Token::Percent),
             '^' => Ok(Token::Power),
             '=' => {
-                // = or == or =>
+                // = o == o =>
                 if let Some(&'=') = self.peek_char() {
                     self.next_char();
                     Ok(Token::Equal)

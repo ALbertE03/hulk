@@ -34,8 +34,8 @@ pub struct FunctionDecl {
 #[derive(Debug, Clone, PartialEq)]
 pub struct TypeDecl {
     pub name: String,
-    pub params: Vec<Param>,      // For constructor arguments
-    pub parent: Option<TypeInit>, // inheritance with args
+    pub params: Vec<Param>,      // Para argumentos del constructor
+    pub parent: Option<TypeInit>, // Herencia con argumentos
     pub attributes: Vec<Attribute>,
     pub methods: Vec<FunctionDecl>,
 }
@@ -75,19 +75,19 @@ pub struct MethodSignature {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Expr {
-    // --- Primitives ---
+    // --- Primitivos ---
     Number(f64),
     String(String),
     Boolean(bool),
     Identifier(String),
     
-    // --- Binary Operations ---
+    // --- Operaciones binarias ---
     Binary(Box<Spanned<Expr>>, Op, Box<Spanned<Expr>>),
     
-    // --- Unary Operations ---
+    // --- Operaciones unarias ---
     Unary(UnOp, Box<Spanned<Expr>>),
 
-    // --- Control Flow ---
+    // --- Flujo de control ---
     If {
         cond: Box<Spanned<Expr>>,
         then_expr: Box<Spanned<Expr>>,
@@ -103,7 +103,7 @@ pub enum Expr {
         body: Box<Spanned<Expr>>,
     },
     
-    // --- Blocks & Scoping ---
+    // --- Bloques y ámbito ---
     Block(Vec<Spanned<Expr>>), 
     
     Let {
@@ -116,7 +116,7 @@ pub enum Expr {
         value: Box<Spanned<Expr>>,
     },
 
-    // --- Functions & Types ---
+    // --- Funciones y tipos ---
     Call {
         func: String,
         args: Vec<Spanned<Expr>>,
@@ -145,11 +145,11 @@ pub enum Expr {
         body: Box<Spanned<Expr>>,
     },
 
-    // --- Type Checks ---
+    // --- Comprobaciones de tipo ---
     Is(Box<Spanned<Expr>>, String),
     As(Box<Spanned<Expr>>, String),
 
-    // --- Vectors ---
+    // --- Vectores ---
     VectorLiteral(Vec<Spanned<Expr>>),
     VectorGenerator {
         expr: Box<Spanned<Expr>>,
@@ -161,7 +161,7 @@ pub enum Expr {
         index: Box<Spanned<Expr>>,
     },
 
-    // --- Mathematical Built-ins ---
+    // --- Funciones matemáticas integradas ---
     Sqrt(Box<Spanned<Expr>>),
     Sin(Box<Spanned<Expr>>),
     Cos(Box<Spanned<Expr>>),
@@ -171,7 +171,7 @@ pub enum Expr {
     PI,
     E,
     
-    /// Error node for error recovery
+    /// Nodo de error para recuperación de errores
     Error,
 }
 
@@ -180,13 +180,13 @@ pub enum Op {
     Add, Sub, Mul, Div, Mod, Pow,
     Eq, Neq, Lt, Gt, Le, Ge,
     And, Or,
-    // String concat
+    // Concatenación de cadenas
     Concat, // @
     ConcatSpace, // @@
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum UnOp {
-    Neg, // -
-    Not, // !
+    Neg, // - (negativo)
+    Not, // ! (negación lógica)
 }

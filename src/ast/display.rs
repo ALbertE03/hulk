@@ -138,7 +138,7 @@ impl fmt::Display for Expr {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Expr::Number(n) => write!(f, "{}", n),
-            Expr::String(s) => write!(f, "\"{}\"", s), // TODO: Escape properly
+            Expr::String(s) => write!(f, "\"{}\"", s), // TODO: Escapar correctamente
             Expr::Boolean(b) => write!(f, "{}", b),
             Expr::Identifier(s) => write!(f, "{}", s),
             Expr::Binary(lhs, op, rhs) => write!(f, "({} {} {})", lhs.node, op, rhs.node),

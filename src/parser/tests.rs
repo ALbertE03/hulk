@@ -1323,3 +1323,57 @@ fn test_parse_error_lexer_unterminated_string() {
         _ => panic!("Expected Lex UnterminatedString error, got {:?}", result),
     }
 }
+
+#[test]
+fn test_parse_precedence_power_unary() {
+    let input = "-2 ^ 2;";
+    let mut parser = Parser::new(input);
+    let result = parser.parse_program().unwrap();
+    
+    // Should be -(2^2)
+    match &result.expr.node {
+        Expr::Unary(UnOp::Neg, inner) => {
+            match &inner.node {
+                Expr::Binary(_, Op::Pow, _) => {},
+                _ => panic!("Expected Power expression inside Negation, got {:?}", inner.node),
+            }
+        }
+        _ => panic!("Expected Negation as root, got {:?}", result.expr.node),
+    }
+}
+
+#[test]
+fn test_parse_power_right_associativity() {
+    let input = "2 ^ 3 ^ 4;";
+    let mut parser = Parser::new(input);
+    let result = parser.parse_program().unwrap();
+    
+    // Should be 2 ^ (3 ^ 4)
+    match &result.expr.node {
+        Expr::Binary(left, Op::Pow, right) => {
+            match &left.node {
+                Expr::Number(n) if *n == 2.0 => {},
+                _ => panic!("Expected left operand to be 2, got {:?}", left.node),
+            }
+            match &right.node {
+                Expr::Binary(_, Op::Pow, _) => {},
+                _ => panic!("Expected right operand to be another Power expression, got {:?}", right.node),
+            }
+        }
+        _ => panic!("Expected Power expression as root, got {:?}", result.expr.node),
+    }
+}
+
+#[test]
+fn test_parse_error_trailing_garbage() {
+    let input = "print(1); 2;";
+    let mut parser = Parser::new(input);
+    let result = parser.parse_program();
+    
+    match result {
+        Err(ParseError::UnexpectedToken { expected, .. }) => {
+            assert!(expected.contains("end of file"));
+        }
+        _ => panic!("Expected error for trailing garbage, got {:?}", result),
+    }
+}
