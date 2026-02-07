@@ -1,6 +1,7 @@
 use hulk_compiler::parser::Parser;
 use hulk_compiler::macros::expand_macros;
 use hulk_compiler::ast::optimize::optimize_program;
+use hulk_compiler::codegen::{CodeGenerator, mips_target::MipsGenerator};
 use std::io::{self, Read};
 use std::env;
 
@@ -45,6 +46,21 @@ fn main() {
                  Ok(context) => {
                      println!("Semantic check passed!");
                      println!("Defined types: {:?}", context.types.keys());
+                     
+                     // Optimizar
+                     let optimized = optimize_program(expanded);
+                     
+                     println!("\n=== DESPUÉS DE OPTIMIZAR ===\n");
+                     println!("{}", optimized);
+                     
+                     // Generación de Código
+                     println!("\n=== GENERACIÓN DE CÓDIGO (MIPS) ===\n");
+                     let generator = MipsGenerator;
+                     let mips_code = generator.generate(&optimized, &context);
+                     println!("{}", mips_code);
+                     
+                     // Opcional: Escribir a archivo
+                     // std::fs::write("output.mips", mips_code).expect("Unable to write file");
                  },
                  Err(errors) => {
                      println!("Semantic errors found:");
@@ -53,16 +69,6 @@ fn main() {
                      }
                  }
             }
-
-            // Optimizar
-            let optimized = optimize_program(expanded);
-            
-            println!("\n=== DESPUÉS DE OPTIMIZAR ===\n");
-            //println!("AST structure (using Display):\n");
-            println!("{}", optimized);
-            
-            //println!("\nDebug Representation (Internal structure):\n");
-            //println!("{:#?}", optimized);
         }
         Err(e) => {
             eprintln!("Parsing failed: {}", e);
