@@ -35,7 +35,6 @@ fn main() {
         
                      let generator = LlvmGenerator;
                      let llvm_code = generator.generate(&optimized, &context);
-                     println!("{}", llvm_code);
                      
                     std::fs::write("output.ll", &llvm_code).expect("Unable to write file");
                  },

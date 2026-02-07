@@ -932,45 +932,121 @@ fn gen_expr(ctx: &mut Ctx, expr: &Spanned<Expr>) -> String {
         }
 
         // ── Para (For) ──────────────────────────────────────────────────────
+        // Transpila automáticamente según el tipo del iterable:
+        //   - Si es un objeto con métodos next()/get_current() (protocolo Iterable),
+        //     se transpila a: while(iterable.next()) let var = iterable.get_current() in { body }
+        //   - Si es un vector, se itera por índice como antes.
         Expr::For { var, iterable, body } => {
-            let iter_val = gen_expr(ctx, iterable);
-            let vp = ctx.decode_ptr(&iter_val, "double*");
+            // Intentar resolver la clase del iterable para ver si implementa Iterable
+            let iter_vty = infer_val_ty(ctx, &iterable.node);
+            let iterable_class = match &iter_vty {
+                ValTy::Obj(cls) => Some(cls.clone()),
+                _ => None,
+            };
 
-            let len_ptr = vp.clone();
-            let len_d = ctx.tmp(); ctx.emit(&format!("{} = load double, double* {}", len_d, len_ptr));
-            let len_i = ctx.tmp(); ctx.emit(&format!("{} = fptosi double {} to i64", len_i, len_d));
+            // Determinar nombre del método "current" (get_current o current)
+            let current_method = if let Some(ref cls) = iterable_class {
+                if let Some(layout) = ctx.classes.get(cls.as_str()) {
+                    if layout.method_names.contains_key("get_current") {
+                        Some("get_current")
+                    } else if layout.method_names.contains_key("current") {
+                        Some("current")
+                    } else {
+                        None
+                    }
+                } else { None }
+            } else { None };
 
-            let idx_ptr = ctx.tmp(); ctx.emit(&format!("{} = alloca i64", idx_ptr));
-            ctx.emit(&format!("store i64 0, i64* {}", idx_ptr));
+            let is_iterable = if let Some(ref cls) = iterable_class {
+                if let Some(layout) = ctx.classes.get(cls.as_str()) {
+                    layout.method_names.contains_key("next") && current_method.is_some()
+                } else { false }
+            } else { false };
 
-            let lc = ctx.lbl("fcond"); let lb = ctx.lbl("fbody"); let le = ctx.lbl("fend");
-            ctx.emit(&format!("br label %{}", lc));
+            if is_iterable {
+                // ── Protocolo Iterable: transpilación a while(iter.next()) ──
+                let cls = iterable_class.unwrap();
+                let cur_method = current_method.unwrap();
+                let layout = ctx.classes.get(&cls).unwrap();
+                let next_fn = layout.method_names.get("next").unwrap().clone();
+                let current_fn = layout.method_names.get(cur_method).unwrap().clone();
 
-            ctx.emit_label(&lc);
-            let ci = ctx.tmp(); ctx.emit(&format!("{} = load i64, i64* {}", ci, idx_ptr));
-            let cc = ctx.tmp(); ctx.emit(&format!("{} = icmp slt i64 {}, {}", cc, ci, len_i));
-            ctx.emit(&format!("br i1 {}, label %{}, label %{}", cc, lb, le));
+                let iter_val = gen_expr(ctx, iterable);
+                let iter_ptr = ctx.tmp();
+                ctx.emit(&format!("{} = alloca double", iter_ptr));
+                ctx.emit(&format!("store double {}, double* {}", iter_val, iter_ptr));
 
-            ctx.emit_label(&lb);
-            ctx.enter_scope();
-            let ci2 = ctx.tmp(); ctx.emit(&format!("{} = load i64, i64* {}", ci2, idx_ptr));
-            let off = ctx.tmp(); ctx.emit(&format!("{} = add i64 {}, 1", off, ci2));
-            let ep = ctx.tmp(); ctx.emit(&format!("{} = getelementptr double, double* {}, i64 {}", ep, vp, off));
-            let ev = ctx.tmp(); ctx.emit(&format!("{} = load double, double* {}", ev, ep));
-            let vp2 = ctx.tmp(); ctx.emit(&format!("{} = alloca double", vp2));
-            ctx.emit(&format!("store double {}, double* {}", ev, vp2));
-            ctx.def_var(var, &vp2, ValTy::Num);
+                let lc = ctx.lbl("icond"); let lb = ctx.lbl("ibody"); let le = ctx.lbl("iend");
+                ctx.emit(&format!("br label %{}", lc));
 
-            gen_expr(ctx, body);
+                // Condición: call next()
+                ctx.emit_label(&lc);
+                let iv = ctx.tmp(); ctx.emit(&format!("{} = load double, double* {}", iv, iter_ptr));
+                let op = ctx.decode_ptr(&iv, "i8*");
+                let next_r = ctx.tmp();
+                ctx.emit(&format!("{} = call double {}(i8* {})", next_r, next_fn, op));
+                let cond = ctx.tmp();
+                ctx.emit(&format!("{} = fcmp one double {}, 0.0", cond, next_r));
+                ctx.emit(&format!("br i1 {}, label %{}, label %{}", cond, lb, le));
 
-            let ni = ctx.tmp(); ctx.emit(&format!("{} = load i64, i64* {}", ni, idx_ptr));
-            let ni2 = ctx.tmp(); ctx.emit(&format!("{} = add i64 {}, 1", ni2, ni));
-            ctx.emit(&format!("store i64 {}, i64* {}", ni2, idx_ptr));
-            ctx.exit_scope();
-            ctx.emit(&format!("br label %{}", lc));
+                // Cuerpo: let var = iter.get_current() in body
+                ctx.emit_label(&lb);
+                ctx.enter_scope();
+                let iv2 = ctx.tmp(); ctx.emit(&format!("{} = load double, double* {}", iv2, iter_ptr));
+                let op2 = ctx.decode_ptr(&iv2, "i8*");
+                let cur_r = ctx.tmp();
+                ctx.emit(&format!("{} = call double {}(i8* {})", cur_r, current_fn, op2));
+                let vp = ctx.tmp(); ctx.emit(&format!("{} = alloca double", vp));
+                ctx.emit(&format!("store double {}, double* {}", cur_r, vp));
+                ctx.def_var(var, &vp, ValTy::Num);
 
-            ctx.emit_label(&le);
-            "0.0".into()
+                gen_expr(ctx, body);
+                ctx.exit_scope();
+                ctx.emit(&format!("br label %{}", lc));
+
+                ctx.emit_label(&le);
+                "0.0".into()
+            } else {
+                // ── Vector: iteración por índice ──
+                let iter_val = gen_expr(ctx, iterable);
+                let vp = ctx.decode_ptr(&iter_val, "double*");
+
+                let len_ptr = vp.clone();
+                let len_d = ctx.tmp(); ctx.emit(&format!("{} = load double, double* {}", len_d, len_ptr));
+                let len_i = ctx.tmp(); ctx.emit(&format!("{} = fptosi double {} to i64", len_i, len_d));
+
+                let idx_ptr = ctx.tmp(); ctx.emit(&format!("{} = alloca i64", idx_ptr));
+                ctx.emit(&format!("store i64 0, i64* {}", idx_ptr));
+
+                let lc = ctx.lbl("fcond"); let lb = ctx.lbl("fbody"); let le = ctx.lbl("fend");
+                ctx.emit(&format!("br label %{}", lc));
+
+                ctx.emit_label(&lc);
+                let ci = ctx.tmp(); ctx.emit(&format!("{} = load i64, i64* {}", ci, idx_ptr));
+                let cc = ctx.tmp(); ctx.emit(&format!("{} = icmp slt i64 {}, {}", cc, ci, len_i));
+                ctx.emit(&format!("br i1 {}, label %{}, label %{}", cc, lb, le));
+
+                ctx.emit_label(&lb);
+                ctx.enter_scope();
+                let ci2 = ctx.tmp(); ctx.emit(&format!("{} = load i64, i64* {}", ci2, idx_ptr));
+                let off = ctx.tmp(); ctx.emit(&format!("{} = add i64 {}, 1", off, ci2));
+                let ep = ctx.tmp(); ctx.emit(&format!("{} = getelementptr double, double* {}, i64 {}", ep, vp, off));
+                let ev = ctx.tmp(); ctx.emit(&format!("{} = load double, double* {}", ev, ep));
+                let vp2 = ctx.tmp(); ctx.emit(&format!("{} = alloca double", vp2));
+                ctx.emit(&format!("store double {}, double* {}", ev, vp2));
+                ctx.def_var(var, &vp2, ValTy::Num);
+
+                gen_expr(ctx, body);
+
+                let ni = ctx.tmp(); ctx.emit(&format!("{} = load i64, i64* {}", ni, idx_ptr));
+                let ni2 = ctx.tmp(); ctx.emit(&format!("{} = add i64 {}, 1", ni2, ni));
+                ctx.emit(&format!("store i64 {}, i64* {}", ni2, idx_ptr));
+                ctx.exit_scope();
+                ctx.emit(&format!("br label %{}", lc));
+
+                ctx.emit_label(&le);
+                "0.0".into()
+            }
         }
 
         // ── Let (Enlace de variables) ───────────────────────────────────────

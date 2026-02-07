@@ -1,4 +1,0 @@
-    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.01s
-     Running `target/debug/hulk-compiler macro_example.hulk`
-Semantic check passed!
-Defined types: ["Mammal", "String", "Iterable", "NumberTransform", "Number", "Boolean", "Adder", "Greeter", "Object", "Bird", "Doubler", "Cat", "Printable", "Dog", "Range", "Animal", "Describable"]

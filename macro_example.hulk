@@ -406,7 +406,9 @@ function repeat_str(s: String, n: Number): String =>
 
         // === Section 14: Iterables (Range with next/current) ===
         print("--- Iterables ---");
-
+        for (a in range(1, 4))
+            print("Range(1,4) value:" @@ a);
+            
         // Crear un rango iterable [0, 5)
         let r = range(0, 5) in {
             print("Range(0, 5):");
