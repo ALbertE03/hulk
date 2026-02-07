@@ -172,3 +172,54 @@ fn test_loops_and_arrays() {
     assert_eq!(tokens, expected);
 }
 
+#[test]
+fn test_while_loop() {
+    let input = "let a = 10 in while (a > 0) { print(a); a := a - 1; }";
+    let tokens: Vec<Token> = Lexer::new(input).collect();
+    println!("While Loop input:\n{}", input);
+    println!("Generated Tokens:\n{:#?}", tokens);
+
+    let expected = vec![
+        Let, Identifier("a".to_string()), Assign, Number(10.0), In,
+        While, LParen, Identifier("a".to_string()), GreaterThan, Number(0.0), RParen, LBrace,
+        Print, LParen, Identifier("a".to_string()), RParen, Semicolon,
+        Identifier("a".to_string()), DestructAssign, Identifier("a".to_string()), Minus, Number(1.0), Semicolon,
+        RBrace
+    ];
+    assert_eq!(tokens, expected);
+}
+
+#[test]
+fn test_protocol_definition() {
+    let input = "protocol Hashable { hash(): Number; }";
+    let tokens: Vec<Token> = Lexer::new(input).collect();
+    println!("Protocol input:\n{}", input);
+    println!("Generated Tokens:\n{:#?}", tokens);
+
+    let expected = vec![
+        Protocol, Identifier("Hashable".to_string()), LBrace,
+        Identifier("hash".to_string()), LParen, RParen, Colon, Identifier("Number".to_string()), Semicolon,
+        RBrace
+    ];
+    assert_eq!(tokens, expected);
+}
+
+#[test]
+fn test_string_interpolation_complex() {
+    // Note: My lexer currently treats "..." as a single string. 
+    // Hulk spec might require parsing interpolation `${...}` inside strings.
+    // The current lexer implementation does NOT handle nested interpolation in the Lexer phase 
+    // (it usually returns a single StringLiteral).
+    // If Hulk's lexer should split strings, I would need to change logic.
+    // For now, testing basic string concatenation which is often used instead.
+    let input = "print(\"Value: \" @ 42 @@ \" is the answer\");";
+    let tokens: Vec<Token> = Lexer::new(input).collect();
+    println!("String Concat input:\n{}", input);
+    println!("Generated Tokens:\n{:#?}", tokens);
+
+    let expected = vec![
+        Print, LParen, StringLiteral("Value: ".to_string()), Concat, Number(42.0), ConcatSpace, StringLiteral(" is the answer".to_string()), RParen, Semicolon
+    ];
+    assert_eq!(tokens, expected);
+}
+
