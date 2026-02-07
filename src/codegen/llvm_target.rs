@@ -10,8 +10,8 @@ impl super::CodeGenerator for LlvmGenerator {
     fn generate(&self, program: &Program, context: &Context) -> String {
         let mut ctx = Ctx::new(context);
 
-        // ── Pass 0: Collect inheritance hierarchy from declarations ──────
-        //   Build a map  child -> (parent_name, parent_args)
+        // ── Paso 0: Recopilar jerarquía de herencia de las declaraciones ─
+        //   Construir un mapa  hijo -> (nombre_padre, args_padre)
         let mut parent_map: HashMap<String, String> = HashMap::new();
         let mut decl_map: HashMap<String, &TypeDecl> = HashMap::new();
         for decl in &program.declarations {
@@ -23,7 +23,7 @@ impl super::CodeGenerator for LlvmGenerator {
             }
         }
 
-        // ── Pass 1: Emit classes in topo order (parent before child) ─────
+        // ── Paso 1: Emitir clases en orden topológico (padre antes que hijo)
         let ordered = topo_sort_classes(&decl_map, &parent_map);
         for name in &ordered {
             if let Some(td) = decl_map.get(name.as_str()) {
@@ -31,7 +31,7 @@ impl super::CodeGenerator for LlvmGenerator {
             }
         }
 
-        // ── Pass 2: Emit top-level function & macro declarations ───────
+        // ── Paso 2: Emitir declaraciones de funciones y macros de nivel superior
         for decl in &program.declarations {
             match decl {
                 Declaration::Function(fd) => emit_function(&mut ctx, fd),
@@ -40,23 +40,23 @@ impl super::CodeGenerator for LlvmGenerator {
             }
         }
 
-        // ── Pass 3: Emit GC sweep helper ────────────────────────────────
+        // ── Paso 3: Emitir función auxiliar del GC (recolector de basura) ─
         emit_gc_sweep_fn(&mut ctx);
 
-        // ── Pass 4: Emit @main ──────────────────────────────────────────
+        // ── Paso 4: Emitir @main ──────────────────────────────────────────
         ctx.functions.push_str("define i32 @main() {\nentry:\n");
         let _val = gen_expr(&mut ctx, &program.expr);
-        // Sweep all tracked allocations before exit
+        // Liberar todas las asignaciones rastreadas antes de salir
         ctx.emit("call void @__hulk_gc_sweep()");
         ctx.functions.push_str("  ret i32 0\n}\n");
 
-        // Assemble final output
+        // Ensamblar la salida final
         format!("{}\n{}\n{}\n{}", ctx.preamble, ctx.globals, ctx.functions, ctx.lambda_defs)
     }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Topological sort for class declarations (ensures parent emitted before child)
+// Orden topológico para declaraciones de clases (asegura que el padre se emita antes que el hijo)
 // ─────────────────────────────────────────────────────────────────────────────
 fn topo_sort_classes(
     decl_map: &HashMap<String, &TypeDecl>,
@@ -89,26 +89,26 @@ fn topo_sort_classes(
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Internal Context
+// Contexto Interno
 // ─────────────────────────────────────────────────────────────────────────────
 
-/// Full layout info for a class, including inherited attributes / methods.
+/// Información completa del layout de una clase, incluyendo atributos/métodos heredados.
 #[allow(dead_code)]
 struct ClassLayout {
-    struct_name: String,                    // %T.MyClass
-    type_id: u32,                           // unique integer id for is/as
-    /// All attributes (parent first, then own), name -> (index, owning_class)
+    struct_name: String,                    // %T.MiClase
+    type_id: u32,                           // id entero único para is/as
+    /// Todos los atributos (padre primero, luego propios), nombre -> (índice, clase dueña)
     attr_indices: HashMap<String, u32>,
-    /// Ordered list of attribute names (for iteration)
+    /// Lista ordenada de nombres de atributos (para iteración)
     attr_order: Vec<String>,
-    /// method_name -> @ClassName_method  (includes inherited)
+    /// nombre_método -> @NombreClase_método  (incluye heredados)
     method_names: HashMap<String, String>,
-    /// parent class name (if any)
+    /// nombre de la clase padre (si existe)
     parent_name: Option<String>,
-    total_fields: u32,                      // including type-id at slot 0
-    /// Attribute name -> declared type name (e.g. "String", "Number", "Boolean")
+    total_fields: u32,                      // incluyendo type-id en slot 0
+    /// Nombre de atributo -> nombre de tipo declarado (ej. "String", "Number", "Boolean")
     attr_types: HashMap<String, String>,
-    /// method_name -> return type hint ("Number", "String", "Boolean", or class name)
+    /// nombre_método -> tipo de retorno ("Number", "String", "Boolean", o nombre de clase)
     method_ret_types: HashMap<String, String>,
 }
 
@@ -117,22 +117,22 @@ struct Ctx<'a> {
     globals: String,
     functions: String,
     counter: usize,
-    scopes: Vec<HashMap<String, (String, ValTy)>>, // name -> (ptr, type)
+    scopes: Vec<HashMap<String, (String, ValTy)>>, // nombre -> (ptr, tipo)
     classes: HashMap<String, ClassLayout>,
     current_class: Option<String>,
-    /// Tracks how many GC slots have been registered (global alloc list size)
+    /// Cantidad de slots GC registrados (tamaño de la lista global de asignaciones)
     gc_alloc_count: usize,
     #[allow(dead_code)]
     sem: &'a Context,
-    /// next type-id for class registration
+    /// Siguiente type-id para registro de clases
     next_type_id: u32,
-    /// Deferred lambda function definitions (emitted outside current function)
+    /// Definiciones de funciones lambda diferidas (emitidas fuera de la función actual)
     lambda_defs: String,
-    /// Tracks return types of named functions
+    /// Tipos de retorno de funciones con nombre
     func_ret_types: HashMap<String, ValTy>,
 }
 
-/// Lightweight tag so we know how to load / print a value.
+/// Etiqueta ligera para saber cómo cargar / imprimir un valor.
 #[derive(Clone, Debug, PartialEq)]
 #[allow(dead_code)]
 enum ValTy { Num, Bool, Str, Ptr, Obj(String), Fn(Box<ValTy>) }
@@ -140,7 +140,7 @@ enum ValTy { Num, Bool, Str, Ptr, Obj(String), Fn(Box<ValTy>) }
 impl<'a> Ctx<'a> {
     fn new(sem: &'a Context) -> Self {
         let preamble = "\
-; HULK -> LLVM IR  (generated)\n\
+; HULK -> LLVM IR  (generated by Albert XD )\n\
 declare i32 @printf(i8*, ...)\n\
 declare i32 @puts(i8*)\n\
 declare i8* @malloc(i64)\n\
@@ -172,7 +172,7 @@ declare double @llvm.fabs.f64(double)\n\
 @.oob_msg  = private unnamed_addr constant [36 x i8] c\"Runtime error: index out of bounds\\0A\\00\"\n\
 @.rand_seeded = global i1 false\n\
 \n\
-; GC tracking: a growable array of i8* pointers\n\
+; Rastreo GC: arreglo creciente de punteros i8*\n\
 @.gc_buf   = global i8** null\n\
 @.gc_len   = global i64 0\n\
 @.gc_cap   = global i64 0\n\
@@ -188,13 +188,13 @@ declare double @llvm.fabs.f64(double)\n\
             current_class: None,
             gc_alloc_count: 0,
             sem,
-            next_type_id: 1, // 0 = reserved / unknown
+            next_type_id: 1, // 0 = reservado / desconocido
             lambda_defs: String::new(),
             func_ret_types: HashMap::new(),
         }
     }
 
-    // ── helpers ──────────────────────────────────────────────────────────────
+    // ── auxiliares ────────────────────────────────────────────────────────────
     fn tmp(&mut self) -> String { let n = format!("%t{}", self.counter); self.counter += 1; n }
     fn lbl(&mut self, pfx: &str) -> String { let n = format!("{}_{}", pfx, self.counter); self.counter += 1; n }
     fn emit(&mut self, s: &str) { self.functions.push_str("  "); self.functions.push_str(s); self.functions.push('\n'); }
@@ -229,11 +229,11 @@ declare double @llvm.fabs.f64(double)\n\
         None
     }
 
-    /// Safely convert a `double` value (pointer-as-double encoding) to a typed pointer.
-    /// This spills the i64 through a stack alloca to force LLVM to use a GPR,
-    /// avoiding a codegen issue where `bitcast double → i64` + `inttoptr` can
-    /// leave the value stranded in an XMM register.
-    /// Returns the name of the pointer SSA value of the given `target_ty` (e.g. "i8*", "double*", "i64*").
+    /// Convierte de forma segura un valor `double` (puntero codificado como double) a un puntero tipado.
+    /// Derrama el i64 a través de un alloca en la pila para forzar a LLVM a usar un GPR,
+    /// evitando un problema de codegen donde `bitcast double → i64` + `inttoptr` puede
+    /// dejar el valor atrapado en un registro XMM.
+    /// Retorna el nombre del valor SSA puntero del `target_ty` dado (ej. "i8*", "double*", "i64*").
     fn decode_ptr(&mut self, double_val: &str, target_ty: &str) -> String {
         let i = self.tmp(); self.emit(&format!("{} = bitcast double {} to i64", i, double_val));
         let a = self.tmp(); self.emit(&format!("{} = alloca i64", a));
@@ -243,13 +243,13 @@ declare double @llvm.fabs.f64(double)\n\
         p
     }
 
-    /// Emit a call to register a malloc'd pointer with the GC tracker.
+    /// Emitir una llamada para registrar un puntero malloc’d con el rastreador GC.
     fn gc_track(&mut self, ptr: &str) {
         self.gc_alloc_count += 1;
         self.emit(&format!("call void @__hulk_gc_track(i8* {})", ptr));
     }
 
-    /// Allocate a type-id for a class.
+    /// Asignar un type-id para una clase.
     fn alloc_type_id(&mut self) -> u32 {
         let id = self.next_type_id;
         self.next_type_id += 1;
@@ -264,18 +264,18 @@ fn escape_llvm(s: &str) -> String {
      .replace('\"', "\\22")
 }
 
-/// Format a f64 as an LLVM IR double literal.
-/// LLVM requires a decimal point in float constants (e.g. `1.0e1` not `1e1`).
+/// Formatear un f64 como literal double de LLVM IR.
+/// LLVM requiere un punto decimal en constantes flotantes (ej. `1.0e1` no `1e1`).
 fn fmt_double(v: f64) -> String {
     let s = format!("{:e}", v);
-    // If the mantissa part has no '.', insert ".0" before the 'e'
+    // Si la parte de la mantisa no tiene '.', insertar ".0" antes de la 'e'
     if let Some(pos) = s.find('e') {
         let mantissa = &s[..pos];
         if !mantissa.contains('.') {
             return format!("{}.0e{}", mantissa, &s[pos+1..]);
         }
     }
-    // fallback: if no 'e', ensure a dot
+    // respaldo: si no hay 'e', asegurar un punto
     if !s.contains('.') && !s.contains('e') {
         return format!("{}.0", s);
     }
@@ -283,11 +283,11 @@ fn fmt_double(v: f64) -> String {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// GC helper functions (emitted as LLVM IR)
+// Funciones auxiliares del GC (emitidas como LLVM IR)
 // ─────────────────────────────────────────────────────────────────────────────
 
-/// Emit @__hulk_gc_track – appends a pointer to the growable GC buffer.
-/// Emit @__hulk_gc_sweep – frees all tracked pointers at program exit.
+/// Emitir @__hulk_gc_track – añade un puntero al buffer creciente del GC.
+/// Emitir @__hulk_gc_sweep – libera todos los punteros rastreados al salir del programa.
 fn emit_gc_sweep_fn(ctx: &mut Ctx) {
     // __hulk_gc_track(i8* ptr)
     ctx.functions.push_str("\
@@ -365,24 +365,24 @@ done:
 
 ");
 
-    // ── @__hulk_num_to_str(double) -> i8*  ─  convert a number to a heap string
+    // ── @__hulk_num_to_str(double) -> i8*  ─  convertir un número a cadena en el heap
     ctx.functions.push_str("\
 define i8* @__hulk_num_to_str(double %val) {
 entry:
-  ; First pass: measure needed length
+  ; Primera pasada: medir la longitud necesaria
   %len = call i32 (i8*, i64, i8*, ...) @snprintf(i8* null, i64 0, i8* getelementptr inbounds ([5 x i8], [5 x i8]* @.fmt_num, i64 0, i64 0), double %val)
   %len64 = sext i32 %len to i64
   %bufsz = add i64 %len64, 1
   %buf = call i8* @malloc(i64 %bufsz)
   call void @__hulk_gc_track(i8* %buf)
-  ; Second pass: actually format
+  ; Segunda pasada: formatear realmente
   call i32 (i8*, i64, i8*, ...) @snprintf(i8* %buf, i64 %bufsz, i8* getelementptr inbounds ([5 x i8], [5 x i8]* @.fmt_num, i64 0, i64 0), double %val)
   ret i8* %buf
 }
 
 ");
 
-    // ── @__hulk_bool_to_str(double) -> i8*  ─  returns pointer to \"true\" or \"false\"
+    // ── @__hulk_bool_to_str(double) -> i8*  ─  retorna puntero a \"true\" o \"false\"
     ctx.functions.push_str("\
 define i8* @__hulk_bool_to_str(double %val) {
 entry:
@@ -393,14 +393,14 @@ entry:
 
 ");
 
-    // ── @__hulk_print_val(double)  ─  runtime print dispatcher
-    //    Uses a tag passed as the second argument:
-    //      0 = number, 1 = string (pointer), 2 = boolean
-    //    Fallback: print as number (safe default).
+    // ── @__hulk_print_val(double)  ─  despachador de impresión en tiempo de ejecución
+    //    Usa una etiqueta pasada como segundo argumento:
+    //      0 = número, 1 = cadena (puntero), 2 = booleano
+    //    Respaldo: imprimir como número (por defecto seguro).
     ctx.functions.push_str("\
 define void @__hulk_print_val(double %val) {
 entry:
-  ; Fallback: print as number (safe default for Unknown type hint)
+  ; Respaldo: imprimir como número (por defecto seguro para tipo Unknown)
   call i32 (i8*, ...) @printf(i8* getelementptr inbounds ([5 x i8], [5 x i8]* @.fmt_num, i64 0, i64 0), double %val)
   call i32 @puts(i8* getelementptr inbounds ([1 x i8], [1 x i8]* @.empty_s, i64 0, i64 0))
   ret void
@@ -408,9 +408,9 @@ entry:
 
 ");
 
-    // ── @__hulk_to_str(double) -> i8*  ─  runtime convert to string
-    //    Safe fallback: always treat as number. Strings should never reach here
-    //    because expr_type_hint should detect them at compile time.
+    // ── @__hulk_to_str(double) -> i8*  ─  convertir a cadena en tiempo de ejecución
+    //    Respaldo seguro: siempre tratar como número. Las cadenas nunca deberían llegar aquí
+    //    porque expr_type_hint debería detectarlas en tiempo de compilación.
     ctx.functions.push_str("\
 define i8* @__hulk_to_str(double %val) {
 entry:
@@ -422,20 +422,20 @@ entry:
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Class / Type emission  (with deep-inheritance support)
+// Emisión de Clases / Tipos  (con soporte de herencia profunda)
 // ─────────────────────────────────────────────────────────────────────────────
 fn emit_class(ctx: &mut Ctx, td: &TypeDecl) {
-    // ── 1. Collect inherited attrs + methods from parent ────────────────
+    // ── 1. Recopilar atributos + métodos heredados del padre ────────────
     let mut attr_indices: HashMap<String, u32> = HashMap::new();
     let mut attr_order: Vec<String> = Vec::new();
     let mut method_names: HashMap<String, String> = HashMap::new();
     let mut attr_types: HashMap<String, String> = HashMap::new();
     let mut parent_name: Option<String> = None;
-    let mut idx: u32 = 1; // slot 0 = type-id (i32, padded to 8 bytes via i64 store)
+    let mut idx: u32 = 1; // slot 0 = type-id (i32, rellenado a 8 bytes vía store i64)
 
     if let Some(ref pi) = td.parent {
         parent_name = Some(pi.name.clone());
-        // Copy everything from parent layout
+        // Copiar todo del layout del padre
         if let Some(parent_layout) = ctx.classes.get(&pi.name) {
             for attr_name in &parent_layout.attr_order {
                 let parent_idx = parent_layout.attr_indices[attr_name];
@@ -443,19 +443,19 @@ fn emit_class(ctx: &mut Ctx, td: &TypeDecl) {
                 attr_order.push(attr_name.clone());
                 if parent_idx >= idx { idx = parent_idx + 1; }
             }
-            // Inherit methods (child can override later)
+            // Heredar métodos (el hijo puede sobreescribir después)
             for (mname, mfn) in &parent_layout.method_names {
                 method_names.insert(mname.clone(), mfn.clone());
             }
-            // Inherit attribute types
+            // Heredar tipos de atributos
             for (aname, atype) in &parent_layout.attr_types {
                 attr_types.insert(aname.clone(), atype.clone());
             }
         }
     }
 
-    // ── 2. Own attributes ────────────────────────────────────────────────
-    // Build param type map: param_name -> type_name  (e.g., "name" -> "String")
+    // ── 2. Atributos propios ──────────────────────────────────────────────
+    // Construir mapa de tipos de parámetros: nombre_param -> nombre_tipo  (ej., "name" -> "String")
     let param_types: HashMap<String, String> = td.params.iter().filter_map(|p| {
         if let Some(TypeAnnotation::Name(ref tn)) = p.type_annotation {
             Some((p.name.clone(), tn.clone()))
@@ -470,10 +470,10 @@ fn emit_class(ctx: &mut Ctx, td: &TypeDecl) {
             attr_order.push(attr.name.clone());
             idx += 1;
         }
-        // Infer attribute type from:
-        //  a) Explicit attribute type annotation
-        //  b) Init expression referencing a typed constructor param
-        //  c) Init expression literal type
+        // Inferir tipo de atributo desde:
+        //  a) Anotación de tipo explícita del atributo
+        //  b) Expresión de inicialización referenciando un parámetro tipado del constructor
+        //  c) Tipo literal de la expresión de inicialización
         if !attr_types.contains_key(&attr.name) {
             if let Some(TypeAnnotation::Name(ref tn)) = attr.type_annotation {
                 attr_types.insert(attr.name.clone(), tn.clone());
@@ -491,16 +491,16 @@ fn emit_class(ctx: &mut Ctx, td: &TypeDecl) {
         }
     }
 
-    // ── 3. Struct type { i64 typeid, double, double, ... } ──────────────
+    // ── 3. Tipo struct { i64 typeid, double, double, ... } ──────────────
     let struct_name = format!("%T.{}", td.name);
-    let mut fields = "i64".to_string(); // slot 0 = type id
+    let mut fields = "i64".to_string(); // slot 0 = id de tipo
     for _ in 1..idx { fields.push_str(", double"); }
 
     ctx.globals.push_str(&format!("{} = type {{ {} }}\n", struct_name, fields));
 
-    // ── 4. Register own methods (override inherited) ────────────────────
+    // ── 4. Registrar métodos propios (sobreescribir heredados) ──────────────
     let mut method_ret_types: HashMap<String, String> = HashMap::new();
-    // Inherit method return types from parent
+    // Heredar tipos de retorno de métodos del padre
     if let Some(ref pi) = td.parent {
         if let Some(parent_layout) = ctx.classes.get(&pi.name) {
             for (mname, mret) in &parent_layout.method_ret_types {
@@ -510,11 +510,11 @@ fn emit_class(ctx: &mut Ctx, td: &TypeDecl) {
     }
     for m in &td.methods {
         method_names.insert(m.name.clone(), format!("@{}_{}", td.name, m.name));
-        // Infer method return type from explicit annotation or body heuristic
+        // Inferir tipo de retorno del método desde anotación explícita o heurística del cuerpo
         if let Some(TypeAnnotation::Name(ref tn)) = m.return_type {
             method_ret_types.insert(m.name.clone(), tn.clone());
         } else {
-            // Try to infer from the method body expression
+            // Intentar inferir desde la expresión del cuerpo del método
             if let Some(rt) = infer_return_type_from_body(&m.body.node, &attr_types) {
                 method_ret_types.insert(m.name.clone(), rt);
             }
@@ -535,7 +535,7 @@ fn emit_class(ctx: &mut Ctx, td: &TypeDecl) {
         method_ret_types,
     });
 
-    // ── 5. Emit constructor: @Type_new(args...) -> i8* ──────────────────
+    // ── 5. Emitir constructor: @Tipo_new(args...) -> i8* ──────────────────
     {
         let mut sig = String::new();
         for (i, p) in td.params.iter().enumerate() {
@@ -547,19 +547,19 @@ fn emit_class(ctx: &mut Ctx, td: &TypeDecl) {
         let sz = idx as u64 * 8;
         let raw = ctx.tmp();
         ctx.emit(&format!("{} = call i8* @malloc(i64 {})", raw, sz));
-        // GC track
+        // Rastreo GC
         ctx.emit(&format!("call void @__hulk_gc_track(i8* {})", raw));
 
         let typed = ctx.tmp();
         ctx.emit(&format!("{} = bitcast i8* {} to {}*", typed, raw, struct_name));
 
-        // Store type-id at slot 0
+        // Almacenar type-id en slot 0
         let gep_tid = ctx.tmp();
         ctx.emit(&format!("{} = getelementptr inbounds {}, {}* {}, i32 0, i32 0",
             gep_tid, struct_name, struct_name, typed));
         ctx.emit(&format!("store i64 {}, i64* {}", type_id, gep_tid));
 
-        // Constructor params in scope
+        // Parámetros del constructor en el ámbito
         ctx.enter_scope();
         for p in &td.params {
             let ptr = ctx.tmp();
@@ -568,16 +568,16 @@ fn emit_class(ctx: &mut Ctx, td: &TypeDecl) {
             ctx.def_var(&p.name, &ptr, val_ty_from_annotation(&p.type_annotation));
         }
 
-        // If parent has a constructor and parent init args are given, call parent
-        // constructor to initialize inherited attrs.
+        // Si el padre tiene constructor y se dan args de inicialización del padre, llamar
+        // al constructor del padre para inicializar atributos heredados.
         if let Some(ref pi) = td.parent {
             if ctx.classes.contains_key(&pi.name) {
-                // Evaluate parent constructor args
+                // Evaluar args del constructor padre
                 let mut parent_vals = Vec::new();
                 for a in &pi.args {
                     parent_vals.push(gen_expr(ctx, a));
                 }
-                // Call parent constructor to get a temp parent obj, then copy its attrs
+                // Llamar al constructor padre para obtener un obj padre temporal, luego copiar sus atributos
                 let mut parent_arg_s = String::new();
                 for (i, v) in parent_vals.iter().enumerate() {
                     if i > 0 { parent_arg_s.push_str(", "); }
@@ -586,7 +586,7 @@ fn emit_class(ctx: &mut Ctx, td: &TypeDecl) {
                 let parent_raw = ctx.tmp();
                 ctx.emit(&format!("{} = call i8* @{}_new({})", parent_raw, pi.name, parent_arg_s));
 
-                // Copy parent attrs from parent_raw into our object
+                // Copiar atributos del padre desde parent_raw a nuestro objeto
                 let parent_sn = ctx.classes.get(&pi.name).map(|l| l.struct_name.clone())
                     .unwrap_or_default();
                 let parent_typed = ctx.tmp();
@@ -603,7 +603,7 @@ fn emit_class(ctx: &mut Ctx, td: &TypeDecl) {
                             gep_src, parent_sn2, parent_sn2, parent_typed, pidx));
                         let val = ctx.tmp();
                         ctx.emit(&format!("{} = load double, double* {}", val, gep_src));
-                        // Store into child at same index
+                        // Almacenar en el hijo con el mismo índice
                         let child_idx = attr_indices[attr_name];
                         let gep_dst = ctx.tmp();
                         ctx.emit(&format!("{} = getelementptr inbounds {}, {}* {}, i32 0, i32 {}",
@@ -614,7 +614,7 @@ fn emit_class(ctx: &mut Ctx, td: &TypeDecl) {
             }
         }
 
-        // Init own attributes
+        // Inicializar atributos propios
         for attr in &td.attributes {
             let val = gen_expr(ctx, &attr.init);
             let i = attr_indices[&attr.name];
@@ -629,7 +629,7 @@ fn emit_class(ctx: &mut Ctx, td: &TypeDecl) {
         ctx.functions.push_str("}\n\n");
     }
 
-    // ── 6. Emit methods ─────────────────────────────────────────────────
+    // ── 6. Emitir métodos ─────────────────────────────────────────────────
     ctx.current_class = Some(td.name.clone());
     for m in &td.methods {
         let fname = format!("{}_{}", td.name, m.name);
@@ -656,15 +656,15 @@ fn emit_class(ctx: &mut Ctx, td: &TypeDecl) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Top-level function emission
+// Emisión de funciones de nivel superior
 // ─────────────────────────────────────────────────────────────────────────────
-/// Mangle a HULK function name so it doesn't collide with the C entry @main.
+/// Mangling del nombre de función HULK para que no colisione con el entry point de C @main.
 fn mangle_fn(name: &str) -> String {
     if name == "main" { "__hulk_main".to_string() } else { name.to_string() }
 }
 
 fn emit_function(ctx: &mut Ctx, fd: &FunctionDecl) {
-    // Register function return type
+    // Registrar tipo de retorno de la función
     let ret_vty = match &fd.return_type {
         Some(TypeAnnotation::Name(n)) => match n.as_str() {
             "String" => ValTy::Str,
@@ -698,11 +698,11 @@ fn emit_function(ctx: &mut Ctx, fd: &FunctionDecl) {
     ctx.exit_scope();
 }
 
-/// Emit a `def` macro as a regular LLVM function.
-/// Only Normal params are supported at codegen level; Symbolic (@), Placeholder ($)
-/// and Body (*) params are treated as normal pass-by-value for now.
+/// Emitir un macro `def` como una función LLVM regular.
+/// Solo parámetros Normal son soportados a nivel de codegen; los Simbólicos (@), Placeholder ($)
+/// y Body (*) se tratan como paso por valor normal por ahora.
 fn emit_macro(ctx: &mut Ctx, md: &MacroDecl) {
-    // Register return type
+    // Registrar tipo de retorno
     let ret_vty = match &md.return_type {
         Some(TypeAnnotation::Name(n)) => match n.as_str() {
             "String" => ValTy::Str,
@@ -749,11 +749,11 @@ fn emit_macro(ctx: &mut Ctx, md: &MacroDecl) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Expression code generation  (covers every Expr variant)
+// Generación de código de expresiones  (cubre todas las variantes de Expr)
 // ─────────────────────────────────────────────────────────────────────────────
 fn gen_expr(ctx: &mut Ctx, expr: &Spanned<Expr>) -> String {
     match &expr.node {
-        // ── Primitives ──────────────────────────────────────────────────────
+        // ── Primitivos ──────────────────────────────────────────────────────
         Expr::Number(v) => fmt_double(*v),
 
         Expr::Boolean(v) => if *v { "1.0".into() } else { "0.0".into() },
@@ -768,13 +768,13 @@ fn gen_expr(ctx: &mut Ctx, expr: &Spanned<Expr>) -> String {
         }
 
         Expr::Identifier(name) => {
-            // 1. Local / parameter
+            // 1. Local / parámetro
             if let Some((ptr, _ty)) = ctx.get_var(name) {
                 let r = ctx.tmp();
                 ctx.emit(&format!("{} = load double, double* {}", r, ptr));
                 return r;
             }
-            // 2. `self` reference inside a method — encode the i8* as double
+            // 2. Referencia a `self` dentro de un método — codificar i8* como double
             if name == "self" && ctx.current_class.is_some() {
                 let i = ctx.tmp();
                 ctx.emit(&format!("{} = ptrtoint i8* %self to i64", i));
@@ -782,7 +782,7 @@ fn gen_expr(ctx: &mut Ctx, expr: &Spanned<Expr>) -> String {
                 ctx.emit(&format!("{} = bitcast i64 {} to double", d, i));
                 return d;
             }
-            // 3. self attribute (within a method body)
+            // 3. Atributo de self (dentro del cuerpo de un método)
             if let Some(cls) = ctx.current_class.clone() {
                 if let Some(layout) = ctx.classes.get(&cls) {
                     if let Some(&idx) = layout.attr_indices.get(name.as_str()) {
@@ -802,7 +802,7 @@ fn gen_expr(ctx: &mut Ctx, expr: &Spanned<Expr>) -> String {
             "0.0".into()
         }
 
-        // ── Binary ──────────────────────────────────────────────────────────
+        // ── Binario ──────────────────────────────────────────────────────────
         Expr::Binary(lhs_ast, op, rhs_ast) => {
             let l = gen_expr(ctx, lhs_ast);
             let r = gen_expr(ctx, rhs_ast);
@@ -840,11 +840,11 @@ fn gen_expr(ctx: &mut Ctx, expr: &Spanned<Expr>) -> String {
                     ctx.emit(&format!("{} = uitofp i1 {} to double", res, ob));
                 }
                 Op::Concat | Op::ConcatSpace => {
-                    // Convert each operand to i8* string pointer.
-                    // If the operand is already a string (pointer-as-double), bitcast.
-                    // If it's a number, call @__hulk_num_to_str.
-                    // If it's a bool, call @__hulk_bool_to_str.
-                    // If unknown, use @__hulk_num_to_str as default heuristic.
+                    // Convertir cada operando a puntero i8* de cadena.
+                    // Si el operando ya es una cadena (puntero-como-double), bitcast.
+                    // Si es un número, llamar a @__hulk_num_to_str.
+                    // Si es un bool, llamar a @__hulk_bool_to_str.
+                    // Si es desconocido, usar @__hulk_num_to_str como heurística por defecto.
                     let lp = gen_to_str_ptr(ctx, &lhs_ast.node, &l);
                     let rp = gen_to_str_ptr(ctx, &rhs_ast.node, &r);
 
@@ -869,7 +869,7 @@ fn gen_expr(ctx: &mut Ctx, expr: &Spanned<Expr>) -> String {
             res
         }
 
-        // ── Unary ───────────────────────────────────────────────────────────
+        // ── Unario ───────────────────────────────────────────────────────────
         Expr::Unary(op, operand) => {
             let v = gen_expr(ctx, operand);
             let res = ctx.tmp();
@@ -884,7 +884,7 @@ fn gen_expr(ctx: &mut Ctx, expr: &Spanned<Expr>) -> String {
             res
         }
 
-        // ── If / Else ───────────────────────────────────────────────────────
+        // ── If / Else (Condicional) ────────────────────────────────────────
         Expr::If { cond, then_expr, else_expr } => {
             let cv = gen_expr(ctx, cond);
             let cb = ctx.tmp();
@@ -912,7 +912,7 @@ fn gen_expr(ctx: &mut Ctx, expr: &Spanned<Expr>) -> String {
             r
         }
 
-        // ── While ───────────────────────────────────────────────────────────
+        // ── Mientras (While) ────────────────────────────────────────────────
         Expr::While { cond, body } => {
             let lc = ctx.lbl("wcond"); let lb = ctx.lbl("wbody"); let le = ctx.lbl("wend");
             ctx.emit(&format!("br label %{}", lc));
@@ -931,7 +931,7 @@ fn gen_expr(ctx: &mut Ctx, expr: &Spanned<Expr>) -> String {
             "0.0".into()
         }
 
-        // ── For ─────────────────────────────────────────────────────────────
+        // ── Para (For) ──────────────────────────────────────────────────────
         Expr::For { var, iterable, body } => {
             let iter_val = gen_expr(ctx, iterable);
             let vp = ctx.decode_ptr(&iter_val, "double*");
@@ -973,7 +973,7 @@ fn gen_expr(ctx: &mut Ctx, expr: &Spanned<Expr>) -> String {
             "0.0".into()
         }
 
-        // ── Let ─────────────────────────────────────────────────────────────
+        // ── Let (Enlace de variables) ───────────────────────────────────────
         Expr::Let { bindings, body } => {
             ctx.enter_scope();
             for (name, _ann, init_expr) in bindings {
@@ -989,7 +989,7 @@ fn gen_expr(ctx: &mut Ctx, expr: &Spanned<Expr>) -> String {
             res
         }
 
-        // ── Assignment ──────────────────────────────────────────────────────
+        // ── Asignación ──────────────────────────────────────────────────────
         Expr::Assignment { target, value } => {
             let v = gen_expr(ctx, value);
             if let Some((ptr, _)) = ctx.get_var(target) {
@@ -998,14 +998,14 @@ fn gen_expr(ctx: &mut Ctx, expr: &Spanned<Expr>) -> String {
             v
         }
 
-        // ── Block ───────────────────────────────────────────────────────────
+        // ── Bloque ───────────────────────────────────────────────────────────
         Expr::Block(exprs) => {
             let mut last = "0.0".to_string();
             for e in exprs { last = gen_expr(ctx, e); }
             last
         }
 
-        // ── Call (function) ─────────────────────────────────────────────────
+        // ── Llamada (función) ────────────────────────────────────────────────
         Expr::Call { func, args } => {
             if func == "print" {
                 gen_print(ctx, args);
@@ -1014,14 +1014,14 @@ fn gen_expr(ctx: &mut Ctx, expr: &Spanned<Expr>) -> String {
             let mut vals = Vec::new();
             for a in args { vals.push(gen_expr(ctx, a)); }
 
-            // Check if 'func' is a variable (lambda/closure) in scope
+            // Verificar si 'func' es una variable (lambda/clausura) en el ámbito
             if let Some((ptr, vty)) = ctx.get_var(func) {
-                // ── Functor call: if the variable holds an object with an `invoke` method,
-                // call obj.invoke(args) instead of treating it as a closure.
+                // ── Llamada functor: si la variable contiene un objeto con método `invoke`,
+                // llamar obj.invoke(args) en vez de tratar como clausura.
                 if let ValTy::Obj(ref class_name) = vty {
                     if let Some(layout) = ctx.classes.get(class_name.as_str()) {
                         if let Some(invoke_fname) = layout.method_names.get("invoke") {
-                            let invoke_fname = invoke_fname[1..].to_string(); // strip leading @
+                            let invoke_fname = invoke_fname[1..].to_string(); // quitar @ inicial
                             let ov = ctx.tmp();
                             ctx.emit(&format!("{} = load double, double* {}", ov, ptr));
                             let op = ctx.decode_ptr(&ov, "i8*");
@@ -1036,26 +1036,26 @@ fn gen_expr(ctx: &mut Ctx, expr: &Spanned<Expr>) -> String {
                     }
                 }
 
-                // Closure call: variable holds a double-encoded pointer to [fn_ptr, env_ptr]
+                // Llamada a clausura: la variable contiene un puntero double-encoded a [fn_ptr, env_ptr]
                 let cval = ctx.tmp();
                 ctx.emit(&format!("{} = load double, double* {}", cval, ptr));
                 let cp = ctx.decode_ptr(&cval, "double*");
-                // Load fn_ptr (slot 0)
+                // Cargar fn_ptr (slot 0)
                 let fp_d = ctx.tmp();
                 ctx.emit(&format!("{} = load double, double* {}", fp_d, cp));
-                // Build fn type: double(double*, double, double, ...)
+                // Construir tipo fn: double(double*, double, double, ...)
                 let param_types: String = std::iter::once("double*".to_string())
                     .chain(vals.iter().map(|_| "double".to_string()))
                     .collect::<Vec<_>>().join(", ");
                 let fn_ty = format!("double ({})*", param_types);
                 let fp = ctx.decode_ptr(&fp_d, &fn_ty);
-                // Load env_ptr (slot 1)
+                // Cargar env_ptr (slot 1)
                 let env_slot = ctx.tmp();
                 ctx.emit(&format!("{} = getelementptr double, double* {}, i64 1", env_slot, cp));
                 let env_d = ctx.tmp();
                 ctx.emit(&format!("{} = load double, double* {}", env_d, env_slot));
                 let env_p = ctx.decode_ptr(&env_d, "double*");
-                // Build args: env_ptr, val0, val1, ...
+                // Construir args: env_ptr, val0, val1, ...
                 let mut arg_s = format!("double* {}", env_p);
                 for v in &vals {
                     arg_s.push_str(&format!(", double {}", v));
@@ -1064,7 +1064,7 @@ fn gen_expr(ctx: &mut Ctx, expr: &Spanned<Expr>) -> String {
                 ctx.emit(&format!("{} = call double {}({})", r, fp, arg_s));
                 r
             } else {
-                // Direct function call
+                // Llamada directa a función
                 let mut arg_s = String::new();
                 for (i, v) in vals.iter().enumerate() {
                     if i > 0 { arg_s.push_str(", "); }
@@ -1077,7 +1077,7 @@ fn gen_expr(ctx: &mut Ctx, expr: &Spanned<Expr>) -> String {
             }
         }
 
-        // ── Instantiation ───────────────────────────────────────────────────
+        // ── Instanciación ───────────────────────────────────────────────────
         Expr::Instantiation { ty, args } => {
             let mut vals = Vec::new();
             for a in args { vals.push(gen_expr(ctx, a)); }
@@ -1093,9 +1093,9 @@ fn gen_expr(ctx: &mut Ctx, expr: &Spanned<Expr>) -> String {
             d
         }
 
-        // ── MethodCall ──────────────────────────────────────────────────────
+        // ── Llamada a método ─────────────────────────────────────────────────
         Expr::MethodCall { obj, method, args } => {
-            // Resolve the class of the object at compile time
+            // Resolver la clase del objeto en tiempo de compilación
             let obj_class = resolve_obj_class_from_expr(ctx, &obj.node);
             let ov = gen_expr(ctx, obj);
             let op = ctx.decode_ptr(&ov, "i8*");
@@ -1104,7 +1104,7 @@ fn gen_expr(ctx: &mut Ctx, expr: &Spanned<Expr>) -> String {
             for a in args { vals.push(gen_expr(ctx, a)); }
 
             let mut func_name = format!("unknown_{}", method);
-            // First try the resolved class
+            // Primero intentar con la clase resuelta
             if let Some(ref cls) = obj_class {
                 if let Some(layout) = ctx.classes.get(cls.as_str()) {
                     if let Some(fname) = layout.method_names.get(method.as_str()) {
@@ -1112,7 +1112,7 @@ fn gen_expr(ctx: &mut Ctx, expr: &Spanned<Expr>) -> String {
                     }
                 }
             }
-            // Fallback: search all classes
+            // Respaldo: buscar en todas las clases
             if func_name.starts_with("unknown_") {
                 for (_, layout) in &ctx.classes {
                     if let Some(fname) = layout.method_names.get(method.as_str()) {
@@ -1131,15 +1131,15 @@ fn gen_expr(ctx: &mut Ctx, expr: &Spanned<Expr>) -> String {
             r
         }
 
-        // ── AttributeAccess ─────────────────────────────────────────────────
+        // ── Acceso a atributo ────────────────────────────────────────────────
         Expr::AttributeAccess { obj, attribute } => {
-            // Resolve object class at compile time for correct struct layout
+            // Resolver clase del objeto en tiempo de compilación para layout correcto del struct
             let obj_class = resolve_obj_class_from_expr(ctx, &obj.node);
             let ov = gen_expr(ctx, obj);
             let op = ctx.decode_ptr(&ov, "i8*");
 
             let mut found_idx: Option<(u32, String)> = None;
-            // First try the resolved class
+            // Primero intentar con la clase resuelta
             if let Some(ref cls) = obj_class {
                 if let Some(layout) = ctx.classes.get(cls.as_str()) {
                     if let Some(&idx) = layout.attr_indices.get(attribute.as_str()) {
@@ -1147,7 +1147,7 @@ fn gen_expr(ctx: &mut Ctx, expr: &Spanned<Expr>) -> String {
                     }
                 }
             }
-            // Fallback: search all classes
+            // Respaldo: buscar en todas las clases
             if found_idx.is_none() {
                 for (_, layout) in &ctx.classes {
                     if let Some(&idx) = layout.attr_indices.get(attribute.as_str()) {
@@ -1169,9 +1169,9 @@ fn gen_expr(ctx: &mut Ctx, expr: &Spanned<Expr>) -> String {
             }
         }
 
-        // ── BaseCall  (calls parent's constructor or method) ────────────────
+        // ── Llamada base (llama al constructor o método del padre) ───────────
         Expr::BaseCall { args } => {
-            // Resolve the parent class from current_class
+            // Resolver la clase padre desde current_class
             let parent_info = ctx.current_class.as_ref().and_then(|cls| {
                 ctx.classes.get(cls).and_then(|layout| {
                     layout.parent_name.as_ref().map(|pn| pn.clone())
@@ -1179,7 +1179,7 @@ fn gen_expr(ctx: &mut Ctx, expr: &Spanned<Expr>) -> String {
             });
 
             if let Some(parent_class) = parent_info {
-                // Evaluate args
+                // Evaluar argumentos
                 let mut vals = Vec::new();
                 for a in args { vals.push(gen_expr(ctx, a)); }
                 let mut arg_s = String::new();
@@ -1187,7 +1187,7 @@ fn gen_expr(ctx: &mut Ctx, expr: &Spanned<Expr>) -> String {
                     if i > 0 { arg_s.push_str(", "); }
                     arg_s.push_str("double "); arg_s.push_str(v);
                 }
-                // Call parent constructor
+                // Llamar al constructor del padre
                 let raw = ctx.tmp();
                 ctx.emit(&format!("{} = call i8* @{}_new({})", raw, parent_class, arg_s));
                 let pi = ctx.tmp(); ctx.emit(&format!("{} = ptrtoint i8* {} to i64", pi, raw));
@@ -1200,14 +1200,14 @@ fn gen_expr(ctx: &mut Ctx, expr: &Spanned<Expr>) -> String {
             }
         }
 
-        // ── Lambda (with closure capture) ───────────────────────────────────
+        // ── Lambda (con captura de clausura) ────────────────────────────────
         Expr::Lambda { params, body, .. } => {
-            // 1. Identify free variables in body that are not lambda params
+            // 1. Identificar variables libres en el cuerpo que no son parámetros de la lambda
             let param_names: Vec<String> = params.iter().map(|p| p.name.clone()).collect();
             let free_vars = collect_free_vars(body, &param_names);
 
-            // 2. Capture current values of free variables
-            let mut captured: Vec<(String, String)> = Vec::new(); // (name, current_value)
+            // 2. Capturar valores actuales de variables libres
+            let mut captured: Vec<(String, String)> = Vec::new(); // (nombre, valor_actual)
             for fv in &free_vars {
                 if let Some((ptr, _)) = ctx.get_var(fv) {
                     let val = ctx.tmp();
@@ -1216,7 +1216,7 @@ fn gen_expr(ctx: &mut Ctx, expr: &Spanned<Expr>) -> String {
                 }
             }
 
-            // 3. Allocate closure environment on heap: [cap0, cap1, ...]
+            // 3. Asignar entorno de clausura en el heap: [cap0, cap1, ...]
             let env_size = captured.len();
             let env_ptr = if env_size > 0 {
                 let bytes = env_size as u64 * 8;
@@ -1225,7 +1225,7 @@ fn gen_expr(ctx: &mut Ctx, expr: &Spanned<Expr>) -> String {
                 ctx.gc_track(&raw);
                 let arr = ctx.tmp();
                 ctx.emit(&format!("{} = bitcast i8* {} to double*", arr, raw));
-                // Store captured values
+                // Almacenar valores capturados
                 for (i, (_, val)) in captured.iter().enumerate() {
                     let gep = ctx.tmp();
                     ctx.emit(&format!("{} = getelementptr double, double* {}, i64 {}", gep, arr, i));
@@ -1236,19 +1236,19 @@ fn gen_expr(ctx: &mut Ctx, expr: &Spanned<Expr>) -> String {
                 None
             };
 
-            // 4. Emit the lambda function body: @__lambda_N(double* %env, double %p0, ...)
+            // 4. Emitir el cuerpo de la función lambda: @__lambda_N(double* %env, double %p0, ...)
             let fname = format!("__lambda_{}", ctx.counter); ctx.counter += 1;
             let mut sig = String::from("double* %__env");
             for p in params {
                 sig.push_str(&format!(", double %{}", p.name));
             }
 
-            // Save current functions buffer and start a fresh one for the lambda
+            // Guardar buffer de funciones actual e iniciar uno nuevo para la lambda
             let saved_functions = std::mem::take(&mut ctx.functions);
             ctx.functions.push_str(&format!("define double @{}({}) {{\nentry:\n", fname, sig));
             ctx.enter_scope();
 
-            // Load captured variables from env
+            // Cargar variables capturadas desde env
             for (i, (name, _)) in captured.iter().enumerate() {
                 let gep = ctx.tmp();
                 ctx.emit(&format!("{} = getelementptr double, double* %__env, i64 {}", gep, i));
@@ -1260,7 +1260,7 @@ fn gen_expr(ctx: &mut Ctx, expr: &Spanned<Expr>) -> String {
                 ctx.def_var(name, &ptr, ValTy::Num);
             }
 
-            // Lambda params
+            // Parámetros de la lambda
             for p in params {
                 let ptr = ctx.tmp();
                 ctx.emit(&format!("{} = alloca double", ptr));
@@ -1273,19 +1273,19 @@ fn gen_expr(ctx: &mut Ctx, expr: &Spanned<Expr>) -> String {
             ctx.functions.push_str("}\n\n");
             ctx.exit_scope();
 
-            // Move the lambda definition to lambda_defs and restore caller's buffer
+            // Mover la definición lambda a lambda_defs y restaurar el buffer del llamador
             let lambda_code = std::mem::replace(&mut ctx.functions, saved_functions);
             ctx.lambda_defs.push_str(&lambda_code);
 
-            // 5. Encode closure as a pair: { fn_ptr, env_ptr } packed into two doubles
-            // For simplicity we pack [fn_ptr_as_double, env_ptr_as_double] in a heap buffer
+            // 5. Codificar clausura como par: { fn_ptr, env_ptr } empaquetado en dos doubles
+            // Por simplicidad empaquetamos [fn_ptr_as_double, env_ptr_as_double] en un buffer en el heap
             let closure_buf = ctx.tmp();
             ctx.emit(&format!("{} = call i8* @malloc(i64 16)", closure_buf)); // 2 * 8 bytes
             ctx.gc_track(&closure_buf);
             let closure_arr = ctx.tmp();
             ctx.emit(&format!("{} = bitcast i8* {} to double*", closure_arr, closure_buf));
 
-            // Store fn ptr as double
+            // Almacenar puntero de función como double
             let fn_param_types: String = std::iter::once("double*".to_string())
                 .chain(params.iter().map(|_| "double".to_string()))
                 .collect::<Vec<_>>().join(", ");
@@ -1295,7 +1295,7 @@ fn gen_expr(ctx: &mut Ctx, expr: &Spanned<Expr>) -> String {
             ctx.emit(&format!("{} = bitcast i64 {} to double", fp_d, fp_i));
             ctx.emit(&format!("store double {}, double* {}", fp_d, closure_arr));
 
-            // Store env ptr as double
+            // Almacenar puntero de entorno como double
             let env_val = if let Some(ref ep) = env_ptr {
                 let ei = ctx.tmp();
                 ctx.emit(&format!("{} = ptrtoint double* {} to i64", ei, ep));
@@ -1309,32 +1309,32 @@ fn gen_expr(ctx: &mut Ctx, expr: &Spanned<Expr>) -> String {
             ctx.emit(&format!("{} = getelementptr double, double* {}, i64 1", env_slot, closure_arr));
             ctx.emit(&format!("store double {}, double* {}", env_val, env_slot));
 
-            // Return closure buffer as double
+            // Retornar buffer de clausura como double
             let pi = ctx.tmp(); ctx.emit(&format!("{} = ptrtoint double* {} to i64", pi, closure_arr));
             let d = ctx.tmp(); ctx.emit(&format!("{} = bitcast i64 {} to double", d, pi));
             d
         }
 
-        // ── Is (runtime type check) ─────────────────────────────────────────
+        // ── Is (verificación de tipo en tiempo de ejecución) ─────────────────
         Expr::Is(expr, type_name) => {
             let v = gen_expr(ctx, expr);
-            // Look up the type-id of the target type and all its descendants
+            // Buscar el type-id del tipo destino y todos sus descendientes
             if let Some(target_layout) = ctx.classes.get(type_name.as_str()) {
                 let target_tid = target_layout.type_id;
-                // Collect target + all children type-ids
+                // Recopilar destino + todos los type-ids hijos
                 let mut valid_ids = vec![target_tid];
-                // Walk all classes and check if they inherit from type_name
+                // Recorrer todas las clases y verificar si heredan de type_name
                 for (_, layout) in &ctx.classes {
                     if layout.type_id != target_tid && class_inherits_from(&ctx.classes, layout, type_name) {
                         valid_ids.push(layout.type_id);
                     }
                 }
 
-                // Decode object pointer and read type-id from slot 0
+                // Decodificar puntero de objeto y leer type-id desde slot 0
                 let op = ctx.decode_ptr(&v, "i64*");
                 let tid = ctx.tmp(); ctx.emit(&format!("{} = load i64, i64* {}", tid, op));
 
-                // Check if tid matches any valid id
+                // Verificar si tid coincide con algún id válido
                 let res_ptr = ctx.tmp();
                 ctx.emit(&format!("{} = alloca double", res_ptr));
                 ctx.emit(&format!("store double 0.0, double* {}", res_ptr));
@@ -1347,7 +1347,7 @@ fn gen_expr(ctx: &mut Ctx, expr: &Spanned<Expr>) -> String {
                     ctx.emit(&format!("br i1 {}, label %{}, label %{}", c, match_lbl, next_lbl));
                     ctx.emit_label(&match_lbl);
                     ctx.emit(&format!("store double 1.0, double* {}", res_ptr));
-                    // We can't easily break, but we overwrite with 1.0 which is fine
+                    // No podemos hacer break fácilmente, pero sobreescribir con 1.0 está bien
                     ctx.emit(&format!("br label %{}", next_lbl));
                     ctx.emit_label(&next_lbl);
                 }
@@ -1356,18 +1356,18 @@ fn gen_expr(ctx: &mut Ctx, expr: &Spanned<Expr>) -> String {
                 ctx.emit(&format!("{} = load double, double* {}", r, res_ptr));
                 r
             } else {
-                // Type not found in classes – check primitives
-                // For Number/Boolean/String we can't check at runtime (everything is double)
-                // Return 1.0 as best-effort
+                // Tipo no encontrado en clases – verificar primitivos
+                // Para Number/Boolean/String no podemos verificar en runtime (todo es double)
+                // Retornar 1.0 como mejor esfuerzo
                 gen_expr(ctx, expr);
                 "1.0".into()
             }
         }
 
-        // ── As (runtime type cast with check) ───────────────────────────────
+        // ── As (cast de tipo con verificación en runtime) ────────────────────
         Expr::As(expr, type_name) => {
             let v = gen_expr(ctx, expr);
-            // If the type has a type-id, verify and abort on failure
+            // Si el tipo tiene un type-id, verificar y abortar en caso de fallo
             if let Some(target_layout) = ctx.classes.get(type_name.as_str()) {
                 let target_tid = target_layout.type_id;
                 let mut valid_ids = vec![target_tid];
@@ -1397,7 +1397,7 @@ fn gen_expr(ctx: &mut Ctx, expr: &Spanned<Expr>) -> String {
                     let fail_lbl = ctx.lbl("as_fail");
                     ctx.emit(&format!("br i1 {}, label %{}, label %{}", ok_cond, ok_lbl, fail_lbl));
                     ctx.emit_label(&fail_lbl);
-                    // Print error and abort
+                    // Imprimir error y abortar
                     let msg_id = ctx.add_global_string("Runtime error: invalid cast");
                     let msg_len = "Runtime error: invalid cast".len() + 1;
                     let msg_gep = ctx.gep_string(&msg_id, msg_len);
@@ -1407,11 +1407,11 @@ fn gen_expr(ctx: &mut Ctx, expr: &Spanned<Expr>) -> String {
                     ctx.emit_label(&ok_lbl);
                 }
             }
-            // Passthrough the value (it's still the same object)
+            // Pasar el valor (sigue siendo el mismo objeto)
             v
         }
 
-        // ── VectorLiteral ───────────────────────────────────────────────────
+        // ── Literal de vector ────────────────────────────────────────────────
         Expr::VectorLiteral(elems) => {
             let count = elems.len();
             let total = (count + 1) as u64 * 8;
@@ -1488,7 +1488,7 @@ fn gen_expr(ctx: &mut Ctx, expr: &Spanned<Expr>) -> String {
             let op = ctx.decode_ptr(&ov, "double*");
             let ii = ctx.tmp(); ctx.emit(&format!("{} = fptosi double {} to i64", ii, iv));
 
-            // ── Bounds check: 0 <= ii < len ─────────────────────────────────
+            // ── Verificación de límites: 0 <= ii < len ───────────────────────────
             let len_d = ctx.tmp(); ctx.emit(&format!("{} = load double, double* {}", len_d, op));
             let len_i = ctx.tmp(); ctx.emit(&format!("{} = fptosi double {} to i64", len_i, len_d));
             let neg_check = ctx.tmp(); ctx.emit(&format!("{} = icmp slt i64 {}, 0", neg_check, ii));
@@ -1511,7 +1511,7 @@ fn gen_expr(ctx: &mut Ctx, expr: &Spanned<Expr>) -> String {
             v
         }
 
-        // ── Match ───────────────────────────────────────────────────────────
+        // ── Match (Coincidencia de patrones) ─────────────────────────────────
         Expr::Match { expr: match_expr, cases, default } => {
             let mv = gen_expr(ctx, match_expr);
             let res_ptr = ctx.tmp();
@@ -1570,7 +1570,7 @@ fn gen_expr(ctx: &mut Ctx, expr: &Spanned<Expr>) -> String {
             r
         }
 
-        // ── Math builtins ───────────────────────────────────────────────────
+        // ── Funciones matemáticas integradas ─────────────────────────────────
         Expr::Sqrt(a) => {
             let v = gen_expr(ctx, a);
             let r = ctx.tmp();
@@ -1604,7 +1604,7 @@ fn gen_expr(ctx: &mut Ctx, expr: &Spanned<Expr>) -> String {
             r
         }
         Expr::Rand => {
-            // Seed once, then call rand() from libc
+            // Sembrar una vez, luego llamar rand() de libc
             let seeded = ctx.tmp();
             ctx.emit(&format!("{} = load i1, i1* @.rand_seeded", seeded));
             let seed_lbl = ctx.lbl("rand_seed");
@@ -1623,7 +1623,7 @@ fn gen_expr(ctx: &mut Ctx, expr: &Spanned<Expr>) -> String {
             ctx.emit_label(&call_lbl);
             let ri = ctx.tmp();
             ctx.emit(&format!("{} = call i32 @rand()", ri));
-            // Normalize to [0, 1): ri / RAND_MAX (2147483647)
+            // Normalizar a [0, 1): ri / RAND_MAX (2147483647)
             let rf = ctx.tmp();
             ctx.emit(&format!("{} = sitofp i32 {} to double", rf, ri));
             let r = ctx.tmp();
@@ -1633,13 +1633,13 @@ fn gen_expr(ctx: &mut Ctx, expr: &Spanned<Expr>) -> String {
         Expr::PI => fmt_double(std::f64::consts::PI),
         Expr::E  => fmt_double(std::f64::consts::E),
 
-        // ── Error node ──────────────────────────────────────────────────────
+        // ── Nodo de error ────────────────────────────────────────────────────
         Expr::Error => { "0.0".into() }
     }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Helper: check if a class inherits from a target class
+// Auxiliar: verificar si una clase hereda de una clase destino
 // ─────────────────────────────────────────────────────────────────────────────
 fn class_inherits_from(
     classes: &HashMap<String, ClassLayout>,
@@ -1655,12 +1655,12 @@ fn class_inherits_from(
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Helper: collect free variables in an expression
+// Auxiliar: recopilar variables libres en una expresión
 // ─────────────────────────────────────────────────────────────────────────────
 fn collect_free_vars(expr: &Spanned<Expr>, bound: &[String]) -> Vec<String> {
     let mut free = Vec::new();
     collect_free_vars_inner(&expr.node, bound, &mut free);
-    // Deduplicate
+    // Deduplicar
     let mut seen = std::collections::HashSet::new();
     free.retain(|v| seen.insert(v.clone()));
     free
@@ -1746,7 +1746,7 @@ fn collect_free_vars_inner(expr: &Expr, bound: &[String], free: &mut Vec<String>
         Expr::Match { expr: e, cases, default } => {
             collect_free_vars_inner(&e.node, bound, free);
             for c in cases {
-                // Patterns can bind variables
+                // Los patrones pueden enlazar variables
                 let mut inner_bound: Vec<String> = bound.to_vec();
                 if let Pattern::Variable { name, .. } = &c.pattern {
                     inner_bound.push(name.clone());
@@ -1764,18 +1764,18 @@ fn collect_free_vars_inner(expr: &Expr, bound: &[String], free: &mut Vec<String>
             collect_free_vars_inner(&a.node, bound, free);
             collect_free_vars_inner(&b.node, bound, free);
         }
-        // Literals, constants – no free vars
+        // Literales, constantes – sin variables libres
         Expr::Number(_) | Expr::String(_) | Expr::Boolean(_) |
         Expr::Rand | Expr::PI | Expr::E | Expr::Error => {}
     }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Helpers: infer return types and resolve object class at compile time
+// Auxiliares: inferir tipos de retorno y resolver clase de objeto en tiempo de compilación
 // ─────────────────────────────────────────────────────────────────────────────
 
-/// Heuristic: infer the return type name of a method body expression.
-/// Uses attribute types for `self.attr` accesses, and literal/op analysis.
+/// Heurística: inferir el nombre del tipo de retorno de una expresión del cuerpo de un método.
+/// Usa tipos de atributos para accesos `self.attr`, y análisis de literales/operaciones.
 fn infer_return_type_from_body(body: &Expr, attr_types: &HashMap<String, String>) -> Option<String> {
     match body {
         Expr::String(_) => Some("String".into()),
@@ -1792,7 +1792,7 @@ fn infer_return_type_from_body(body: &Expr, attr_types: &HashMap<String, String>
             attr_types.get(attribute.as_str()).cloned()
         }
         Expr::Identifier(name) => {
-            // self.attr shorthand: look up in attr_types
+            // Atajo self.attr: buscar en attr_types
             attr_types.get(name.as_str()).cloned()
         }
         Expr::Block(stmts) => {
@@ -1804,8 +1804,8 @@ fn infer_return_type_from_body(body: &Expr, attr_types: &HashMap<String, String>
     }
 }
 
-/// Resolve the HULK class name of an expression at compile time.
-/// Returns Some("ClassName") if determinable, None otherwise.
+/// Resolver el nombre de clase HULK de una expresión en tiempo de compilación.
+/// Retorna Some("NombreClase") si es determinable, None en caso contrario.
 fn resolve_obj_class_from_expr(ctx: &Ctx, expr: &Expr) -> Option<String> {
     match expr {
         Expr::Instantiation { ty, .. } => Some(ty.clone()),
@@ -1815,7 +1815,7 @@ fn resolve_obj_class_from_expr(ctx: &Ctx, expr: &Expr) -> Option<String> {
                     return Some(cls);
                 }
             }
-            // If inside a method and name is "self", return current class
+            // Si estamos dentro de un método y name es "self", retornar la clase actual
             if name == "self" {
                 return ctx.current_class.clone();
             }
@@ -1826,7 +1826,7 @@ fn resolve_obj_class_from_expr(ctx: &Ctx, expr: &Expr) -> Option<String> {
     }
 }
 
-/// Infer the correct ValTy for a variable being bound to an expression.
+/// Inferir el ValTy correcto para una variable que se enlaza a una expresión.
 fn infer_val_ty(ctx: &Ctx, init_expr: &Expr) -> ValTy {
     match init_expr {
         Expr::Instantiation { ty, .. } => ValTy::Obj(ty.clone()),
@@ -1857,11 +1857,11 @@ fn infer_val_ty(ctx: &Ctx, init_expr: &Expr) -> ValTy {
             ValTy::Fn(Box::new(ret_ty))
         }
         Expr::Call { func, .. } => {
-            // Check named functions
+            // Verificar funciones con nombre
             if let Some(ret_vty) = ctx.func_ret_types.get(func.as_str()) {
                 return ret_vty.clone();
             }
-            // Check lambdas
+            // Verificar lambdas
             if let Some((_, ValTy::Fn(ret_ty))) = ctx.get_var(func) {
                 return *ret_ty;
             }
@@ -1871,7 +1871,7 @@ fn infer_val_ty(ctx: &Ctx, init_expr: &Expr) -> ValTy {
     }
 }
 
-/// Convert a parameter's type annotation to a ValTy.
+/// Convertir la anotación de tipo de un parámetro a un ValTy.
 fn val_ty_from_annotation(ann: &Option<TypeAnnotation>) -> ValTy {
     match ann {
         Some(TypeAnnotation::Name(name)) => match name.as_str() {
@@ -1885,38 +1885,38 @@ fn val_ty_from_annotation(ann: &Option<TypeAnnotation>) -> ValTy {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Print helper – detects Number vs Boolean vs String from AST + class metadata
+// Auxiliar de impresión – detecta Number vs Boolean vs String desde el AST + metadatos de clase
 // ─────────────────────────────────────────────────────────────────────────────
 
-/// Type hint result for an expression.
+/// Resultado de pista de tipo para una expresión.
 #[derive(Clone, Copy, Debug, PartialEq)]
 enum ExprTyHint { Str, Num, Bool, Unknown }
 
-/// Determine the likely runtime type of an expression using AST structure
-/// and class attribute metadata.
+/// Determinar el tipo probable en tiempo de ejecución de una expresión usando la estructura del AST
+/// y metadatos de atributos de clase.
 fn expr_type_hint(ctx: &Ctx, expr: &Expr) -> ExprTyHint {
     match expr {
-        // Literals
+        // Literales
         Expr::String(_) => ExprTyHint::Str,
         Expr::Number(_) | Expr::PI | Expr::E | Expr::Rand => ExprTyHint::Num,
         Expr::Boolean(_) => ExprTyHint::Bool,
 
-        // Binary ops
+        // Operaciones binarias
         Expr::Binary(_, Op::Concat, _) | Expr::Binary(_, Op::ConcatSpace, _) => ExprTyHint::Str,
         Expr::Binary(_, op, _) if matches!(op, Op::Add | Op::Sub | Op::Mul | Op::Div | Op::Mod | Op::Pow) => ExprTyHint::Num,
         Expr::Binary(_, op, _) if matches!(op, Op::Eq | Op::Neq | Op::Lt | Op::Gt | Op::Le | Op::Ge | Op::And | Op::Or) => ExprTyHint::Bool,
 
-        // Unary
+        // Unario
         Expr::Unary(UnOp::Neg, _) => ExprTyHint::Num,
         Expr::Unary(UnOp::Not, _) => ExprTyHint::Bool,
 
-        // Math builtins
+        // Funciones matemáticas integradas
         Expr::Sqrt(_) | Expr::Sin(_) | Expr::Cos(_) | Expr::Exp(_) | Expr::Log(_, _) => ExprTyHint::Num,
 
-        // Type checks
+        // Verificaciones de tipo
         Expr::Is(_, _) => ExprTyHint::Bool,
 
-        // AttributeAccess: look up the attribute type in the resolved class first
+        // AccesoAtributo: buscar el tipo del atributo en la clase resuelta primero
         Expr::AttributeAccess { obj, attribute, .. } => {
             let obj_class = resolve_obj_class_from_expr(ctx, &obj.node);
             if let Some(ref cls) = obj_class {
@@ -1931,7 +1931,7 @@ fn expr_type_hint(ctx: &Ctx, expr: &Expr) -> ExprTyHint {
                     }
                 }
             }
-            // Fallback: search all classes
+            // Respaldo: buscar en todas las clases
             for (_, layout) in &ctx.classes {
                 if let Some(type_name) = layout.attr_types.get(attribute.as_str()) {
                     return match type_name.as_str() {
@@ -1945,9 +1945,9 @@ fn expr_type_hint(ctx: &Ctx, expr: &Expr) -> ExprTyHint {
             ExprTyHint::Unknown
         }
 
-        // Method calls: check method_ret_types from resolved class or any class
+        // Llamadas a métodos: verificar method_ret_types desde la clase resuelta o cualquier clase
         Expr::MethodCall { obj, method, .. } => {
-            // First try the resolved class of the object
+            // Primero intentar con la clase resuelta del objeto
             let obj_class = resolve_obj_class_from_expr(ctx, &obj.node);
             if let Some(ref cls) = obj_class {
                 if let Some(layout) = ctx.classes.get(cls.as_str()) {
@@ -1961,7 +1961,7 @@ fn expr_type_hint(ctx: &Ctx, expr: &Expr) -> ExprTyHint {
                     }
                 }
             }
-            // Fallback: search all classes
+            // Respaldo: buscar en todas las clases
             for (_, layout) in &ctx.classes {
                 if let Some(ret_type) = layout.method_ret_types.get(method.as_str()) {
                     return match ret_type.as_str() {
@@ -1975,7 +1975,7 @@ fn expr_type_hint(ctx: &Ctx, expr: &Expr) -> ExprTyHint {
             ExprTyHint::Unknown
         }
 
-        // Control flow
+        // Flujo de control
         Expr::If { then_expr, else_expr, .. } => {
             let t = expr_type_hint(ctx, &then_expr.node);
             let e = expr_type_hint(ctx, &else_expr.node);
@@ -1986,7 +1986,7 @@ fn expr_type_hint(ctx: &Ctx, expr: &Expr) -> ExprTyHint {
         }
         Expr::Let { body, .. } => expr_type_hint(ctx, &body.node),
 
-        // Identifiers: check the tracked val_types
+        // Identificadores: verificar los val_types rastreados
         Expr::Identifier(name) => {
             match ctx.get_var(name).map(|(_, vt)| vt) {
                 Some(ValTy::Str) => ExprTyHint::Str,
@@ -1996,9 +1996,9 @@ fn expr_type_hint(ctx: &Ctx, expr: &Expr) -> ExprTyHint {
             }
         }
 
-        // Function calls: check return type from functions or val_types (for lambdas)
+        // Llamadas a funciones: verificar tipo de retorno desde funciones o val_types (para lambdas)
         Expr::Call { func, .. } => {
-            // First check named functions with return type annotations
+            // Primero verificar funciones con nombre con anotaciones de tipo de retorno
             if let Some(ret_vty) = ctx.func_ret_types.get(func.as_str()) {
                 return match ret_vty {
                     ValTy::Str => ExprTyHint::Str,
@@ -2007,7 +2007,7 @@ fn expr_type_hint(ctx: &Ctx, expr: &Expr) -> ExprTyHint {
                     _ => ExprTyHint::Unknown,
                 };
             }
-            // Then check if it's a lambda stored in val_types
+            // Luego verificar si es una lambda almacenada en val_types
             match ctx.get_var(func).map(|(_, vt)| vt) {
                 Some(ValTy::Fn(ret_ty)) => match *ret_ty {
                     ValTy::Str => ExprTyHint::Str,
@@ -2026,10 +2026,10 @@ fn expr_type_hint(ctx: &Ctx, expr: &Expr) -> ExprTyHint {
     }
 }
 
-/// Given a compiled double value and its AST node, return an `i8*` string pointer.
-/// If the expression is already a string, bitcast the double to a pointer.
-/// If it's a number, call @__hulk_num_to_str.  If a bool, call @__hulk_bool_to_str.
-/// If unknown type, call @__hulk_to_str (runtime auto-detect).
+/// Dado un valor double compilado y su nodo AST, retorna un puntero `i8*` de cadena.
+/// Si la expresión ya es una cadena, bitcast el double a un puntero.
+/// Si es un número, llamar a @__hulk_num_to_str. Si es bool, llamar a @__hulk_bool_to_str.
+/// Si el tipo es desconocido, llamar a @__hulk_to_str (auto-detección en runtime).
 fn gen_to_str_ptr(ctx: &mut Ctx, expr: &Expr, val: &str) -> String {
     let hint = expr_type_hint(ctx, expr);
     match hint {
@@ -2047,7 +2047,7 @@ fn gen_to_str_ptr(ctx: &mut Ctx, expr: &Expr, val: &str) -> String {
             p
         }
         ExprTyHint::Unknown => {
-            // Unknown type at compile time — runtime auto-detect (string pointer vs number)
+            // Tipo desconocido en tiempo de compilación — auto-detección en runtime (puntero de cadena vs número)
             let p = ctx.tmp();
             ctx.emit(&format!("{} = call i8* @__hulk_to_str(double {})", p, val));
             p
