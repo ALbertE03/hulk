@@ -1,6 +1,23 @@
 use std::fmt;
 use crate::ast::nodes::*;
 
+impl fmt::Display for TypeAnnotation {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            TypeAnnotation::Name(s) => write!(f, "{}", s),
+            TypeAnnotation::Function { params, return_type } => {
+                write!(f, "(")?;
+                for (i, p) in params.iter().enumerate() {
+                    if i > 0 { write!(f, ", ")?; }
+                    write!(f, "{}", p)?;
+                }
+                write!(f, ") -> {}", return_type)
+            }
+            TypeAnnotation::Iterable(ty) => write!(f, "{}*", ty),
+        }
+    }
+}
+
 impl fmt::Display for Program {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         for decl in &self.declarations {
@@ -159,6 +176,14 @@ impl fmt::Display for Expr {
                 }
                 write!(f, ")")
             },
+            Expr::BaseCall { args } => {
+                write!(f, "base(")?;
+                for (i, arg) in args.iter().enumerate() {
+                    if i > 0 { write!(f, ", ")?; }
+                    write!(f, "{}", arg.node)?;
+                }
+                write!(f, ")")
+            },
             Expr::MethodCall { obj, method, args } => {
                 write!(f, "{}.{}(", obj.node, method)?;
                 for (i, arg) in args.iter().enumerate() {
@@ -166,6 +191,9 @@ impl fmt::Display for Expr {
                     write!(f, "{}", arg.node)?;
                 }
                 write!(f, ")")
+            },
+            Expr::AttributeAccess { obj, attribute } => {
+                write!(f, "{}.{}", obj.node, attribute)
             },
             Expr::Instantiation { ty, args } => {
                 write!(f, "new {}(", ty)?;
@@ -188,7 +216,27 @@ impl fmt::Display for Expr {
             Expr::VectorGenerator { expr, var, iterable } => {
                 write!(f, "[{} | {} in {}]", expr.node, var, iterable.node)
             },
+            Expr::Lambda { params, return_type, body } => {
+                write!(f, "(")?;
+                for (i, p) in params.iter().enumerate() {
+                    if i > 0 { write!(f, ", ")?; }
+                    write!(f, "{}", p)?;
+                }
+                write!(f, ")")?;
+                if let Some(ret) = return_type {
+                    write!(f, ": {}", ret)?;
+                }
+                write!(f, " => {}", body.node)
+            },
             Expr::Indexing { obj, index } => write!(f, "{}[{}]", obj.node, index.node),
+            Expr::Sqrt(e) => write!(f, "sqrt({})", e.node),
+            Expr::Sin(e) => write!(f, "sin({})", e.node),
+            Expr::Cos(e) => write!(f, "cos({})", e.node),
+            Expr::Exp(e) => write!(f, "exp({})", e.node),
+            Expr::Log(b, v) => write!(f, "log({}, {})", b.node, v.node),
+            Expr::Rand => write!(f, "rand()"),
+            Expr::PI => write!(f, "PI"),
+            Expr::E => write!(f, "E"),
             Expr::Error => write!(f, "<error>"),
         }
     }

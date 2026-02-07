@@ -12,7 +12,7 @@ impl fmt::Display for Position {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Spanned<T> {
     pub node: T,
     pub pos: Position,

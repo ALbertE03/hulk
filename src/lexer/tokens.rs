@@ -1,4 +1,3 @@
-
 #[derive(Debug, PartialEq, Clone)]
 pub enum Token {
     // Keywords
@@ -12,8 +11,11 @@ pub enum Token {
     New,
     Inherits,
     Protocol,
+    Extends,
     Is,
     As,
+    Elif,
+    Base,
     Print, 
     True,
     False,
@@ -55,7 +57,8 @@ pub enum Token {
     // Assignment / Definition
     Assign,         // =
     DestructAssign, // :=
-    Arrow,          // => 
+    FuncArrow,      // => 
+    TypeArrow,      // ->
     
     // Punctuation
     LParen,     // (

@@ -1,0 +1,928 @@
+use crate::lexer::Lexer;
+use crate::lexer::tokens::Token;
+use crate::utils::{Position, Spanned};
+use crate::errors::ParseError;
+use crate::ast::nodes::*;
+
+pub struct Parser {
+    tokens: Vec<(Token, Position)>,
+    current: usize,
+}
+
+impl Parser {
+    pub fn new(input: &str) -> Self {
+        let mut lexer = Lexer::new(input);
+        let mut tokens = Vec::new();
+        while let Some(res) = lexer.next() {
+            match res {
+                Ok(pair) => tokens.push(pair),
+                Err(_) => {
+                    // For now, ignore lexer errors or push an Unknown token
+                    // Better to handle them properly later
+                }
+            }
+        }
+        
+        if tokens.last().map(|(t, _)| t != &Token::EOF).unwrap_or(true) {
+            tokens.push((Token::EOF, tokens.last().map(|(_, p)| p.clone()).unwrap_or(Position { line: 1, column: 1 })));
+        }
+
+        Self {
+            tokens,
+            current: 0,
+        }
+    }
+
+    fn advance(&mut self) -> Result<(Token, Position), ParseError> {
+        if self.current < self.tokens.len() {
+            let res = self.tokens[self.current].clone();
+            if res.0 != Token::EOF {
+                self.current += 1;
+            }
+            Ok(res)
+        } else {
+            Err(ParseError::UnexpectedEOF(self.peek_pos()))
+        }
+    }
+
+    fn peek(&self) -> Option<&(Token, Position)> {
+        self.tokens.get(self.current)
+    }
+
+    fn check(&self, token: &Token) -> bool {
+        match self.peek() {
+            Some((t, _)) => t == token,
+            _ => false,
+        }
+    }
+
+    fn match_token(&mut self, token: &Token) -> bool {
+        if self.check(token) {
+            self.advance().unwrap();
+            true
+        } else {
+            false
+        }
+    }
+
+    fn consume(&mut self, token: &Token, message: &str) -> Result<(Token, Position), ParseError> {
+        if self.check(token) {
+            self.advance()
+        } else {
+            Err(ParseError::UnexpectedToken {
+                expected: message.to_string(),
+                found: format!("{:?}", self.peek().map(|(t, _)| t)),
+                pos: self.peek_pos(),
+            })
+        }
+    }
+
+    fn peek_pos(&self) -> Position {
+        self.tokens.get(self.current)
+            .map(|(_, p)| p.clone())
+            .unwrap_or_else(|| self.tokens.last().map(|(_, p)| p.clone()).unwrap_or(Position { line: 1, column: 1 }))
+    }
+
+    fn peek_description(&self) -> String {
+        match self.peek() {
+            Some((t, _)) => format!("{:?}", t),
+            None => "EOF".to_string(),
+        }
+    }
+
+    // --- Core Parsing ---
+
+    pub fn parse_program(&mut self) -> Result<Program, ParseError> {
+        let mut declarations = Vec::new();
+
+        while !self.at_end() && !self.is_expr_start() {
+            declarations.push(self.parse_declaration()?);
+        }
+
+        let expr = if self.at_end() {
+            // Default to empty block if no expression is provided (valid in some contexts/tests)
+            Spanned::new(Expr::Block(Vec::new()), self.peek_pos())
+        } else {
+            let e = self.parse_spanned_expr(Precedence::Lowest)?;
+            self.match_token(&Token::Semicolon);
+            e
+        };
+
+        Ok(Program {
+            declarations,
+            expr,
+        })
+    }
+
+    fn parse_declaration(&mut self) -> Result<Declaration, ParseError> {
+        if self.match_token(&Token::Function) {
+            Ok(Declaration::Function(self.parse_function_decl()?))
+        } else if self.match_token(&Token::Type) {
+            Ok(Declaration::Type(self.parse_type_decl()?))
+        } else if self.match_token(&Token::Protocol) {
+            Ok(Declaration::Protocol(self.parse_protocol_decl()?))
+        } else {
+            let pos = self.peek_pos();
+            Err(ParseError::UnexpectedToken {
+                expected: "function, type, or protocol".to_string(),
+                found: self.peek_description(),
+                pos,
+            })
+        }
+    }
+
+    // --- Expression Parsing (Pratt Parser) ---
+
+    fn parse_spanned_expr(&mut self, precedence: Precedence) -> Result<Spanned<Expr>, ParseError> {
+        let mut left = self.parse_prefix()?;
+
+        while !self.at_end() && precedence < self.peek_precedence() {
+            left = self.parse_infix(left)?;
+        }
+
+        Ok(left)
+    }
+
+    fn parse_prefix(&mut self) -> Result<Spanned<Expr>, ParseError> {
+        let (token, pos) = self.advance()?;
+        match token {
+            Token::Number(val) => Ok(Spanned::new(Expr::Number(val), pos)),
+            Token::StringLiteral(val) => Ok(Spanned::new(Expr::String(val), pos)),
+            Token::True => Ok(Spanned::new(Expr::Boolean(true), pos)),
+            Token::False => Ok(Spanned::new(Expr::Boolean(false), pos)),
+            Token::Identifier(name) => {
+                match name.as_str() {
+                    "PI" => Ok(Spanned::new(Expr::PI, pos)),
+                    "E" => Ok(Spanned::new(Expr::E, pos)),
+                    "rand" if self.check(&Token::LParen) => {
+                        self.advance()?; // (
+                        self.consume(&Token::RParen, "Expected ')' after rand")?;
+                        Ok(Spanned::new(Expr::Rand, pos))
+                    }
+                    "sqrt" if self.check(&Token::LParen) => {
+                        self.advance()?; // (
+                        let val = self.parse_spanned_expr(Precedence::Lowest)?;
+                        self.consume(&Token::RParen, "Expected ')' after sqrt arguments")?;
+                        Ok(Spanned::new(Expr::Sqrt(Box::new(val)), pos))
+                    }
+                    "sin" if self.check(&Token::LParen) => {
+                        self.advance()?; // (
+                        let val = self.parse_spanned_expr(Precedence::Lowest)?;
+                        self.consume(&Token::RParen, "Expected ')' after sin arguments")?;
+                        Ok(Spanned::new(Expr::Sin(Box::new(val)), pos))
+                    }
+                    "cos" if self.check(&Token::LParen) => {
+                        self.advance()?; // (
+                        let val = self.parse_spanned_expr(Precedence::Lowest)?;
+                        self.consume(&Token::RParen, "Expected ')' after cos arguments")?;
+                        Ok(Spanned::new(Expr::Cos(Box::new(val)), pos))
+                    }
+                    "exp" if self.check(&Token::LParen) => {
+                        self.advance()?; // (
+                        let val = self.parse_spanned_expr(Precedence::Lowest)?;
+                        self.consume(&Token::RParen, "Expected ')' after exp arguments")?;
+                        Ok(Spanned::new(Expr::Exp(Box::new(val)), pos))
+                    }
+                    "log" if self.check(&Token::LParen) => {
+                        self.advance()?; // (
+                        let base = self.parse_spanned_expr(Precedence::Lowest)?;
+                        self.consume(&Token::Comma, "Expected ',' between log arguments")?;
+                        let val = self.parse_spanned_expr(Precedence::Lowest)?;
+                        self.consume(&Token::RParen, "Expected ')' after log arguments")?;
+                        Ok(Spanned::new(Expr::Log(Box::new(base), Box::new(val)), pos))
+                    }
+                    _ => Ok(Spanned::new(Expr::Identifier(name), pos)),
+                }
+            }
+            Token::Minus => {
+                let expr = self.parse_spanned_expr(Precedence::Unary)?;
+                Ok(Spanned::new(Expr::Unary(UnOp::Neg, Box::new(expr)), pos))
+            }
+            Token::Not => {
+                let expr = self.parse_spanned_expr(Precedence::Unary)?;
+                Ok(Spanned::new(Expr::Unary(UnOp::Not, Box::new(expr)), pos))
+            }
+            Token::LParen => self.parse_lambda_or_parenthesized(pos),
+            Token::Let => self.parse_let_expr(pos),
+            Token::If => self.parse_if_expr(pos),
+            Token::While => self.parse_while_expr(pos),
+            Token::For => self.parse_for_expr(pos),
+            Token::LBrace => self.parse_block_expr(pos),
+            Token::New => self.parse_instantiation_expr(pos),
+            Token::LBracket => self.parse_vector_expr(pos),
+            Token::Base => {
+                self.consume(&Token::LParen, "Expected '(' after base")?;
+                let mut args = Vec::new();
+                if !self.check(&Token::RParen) {
+                    loop {
+                        args.push(self.parse_spanned_expr(Precedence::Lowest)?);
+                        if !self.match_token(&Token::Comma) {
+                            break;
+                        }
+                    }
+                }
+                self.consume(&Token::RParen, "Expected ')' after base arguments")?;
+                Ok(Spanned::new(Expr::BaseCall { args }, pos))
+            }
+            Token::Print => {
+                self.consume(&Token::LParen, "Expected '(' after print")?;
+                let mut args = Vec::new();
+                if !self.check(&Token::RParen) {
+                    loop {
+                        args.push(self.parse_spanned_expr(Precedence::Lowest)?);
+                        if !self.match_token(&Token::Comma) {
+                            break;
+                        }
+                    }
+                }
+                self.consume(&Token::RParen, "Expected ')' after print arguments")?;
+                Ok(Spanned::new(Expr::Call { func: "print".to_string(), args }, pos))
+            }
+            _ => Err(ParseError::InvalidExpression(pos)),
+        }
+    }
+
+    fn parse_lambda_or_parenthesized(&mut self, pos: Position) -> Result<Spanned<Expr>, ParseError> {
+        let start_index = self.current;
+        
+        // Try parsing as lambda first
+        // Note: we already consumed '('
+        let params = self.parse_params();
+        if let Ok(p) = params {
+            if self.match_token(&Token::RParen) {
+                if self.check(&Token::FuncArrow) || self.check(&Token::Colon) {
+                    let return_type = if self.match_token(&Token::Colon) {
+                        Some(self.parse_type_annotation()?)
+                    } else {
+                        None
+                    };
+                    self.consume(&Token::FuncArrow, "Expected '=>' after lambda signature")?;
+                    let body = self.parse_spanned_expr(Precedence::Lowest)?;
+                    return Ok(Spanned::new(Expr::Lambda { 
+                        params: p, 
+                        return_type, 
+                        body: Box::new(body) 
+                    }, pos));
+                }
+            }
+        }
+
+        // Backtrack and parse as grouped expression
+        self.current = start_index;
+        let expr = self.parse_spanned_expr(Precedence::Lowest)?;
+        self.consume(&Token::RParen, "Expected ')' after grouping")?;
+        Ok(expr)
+    }
+
+    fn parse_infix(&mut self, left: Spanned<Expr>) -> Result<Spanned<Expr>, ParseError> {
+        let (token, pos) = self.advance()?;
+        
+        match token {
+            Token::LParen => self.parse_call_expr(left, pos),
+            Token::Dot => self.parse_member_access(left, pos),
+            Token::LBracket => self.parse_indexing_expr(left, pos),
+            Token::Is => {
+                let ty = match self.advance()?.0 {
+                    Token::Identifier(t) => t,
+                    t => return Err(ParseError::UnexpectedToken {
+                        expected: "type name".to_string(),
+                        found: format!("{:?}", t),
+                        pos: self.peek_pos(),
+                    }),
+                };
+                Ok(Spanned::new(Expr::Is(Box::new(left), ty), pos))
+            }
+            Token::As => {
+                let ty = match self.advance()?.0 {
+                    Token::Identifier(t) => t,
+                    t => return Err(ParseError::UnexpectedToken {
+                        expected: "type name".to_string(),
+                        found: format!("{:?}", t),
+                        pos: self.peek_pos(),
+                    }),
+                };
+                Ok(Spanned::new(Expr::As(Box::new(left), ty), pos))
+            }
+            Token::DestructAssign => {
+                // x := expr
+                if let Expr::Identifier(name) = &left.node {
+                    let right = self.parse_spanned_expr(Precedence::Assignment)?;
+                    let pos_start = left.pos.clone();
+                    Ok(Spanned::new(Expr::Assignment { target: name.clone(), value: Box::new(right) }, pos_start))
+                } else {
+                    Err(ParseError::UnexpectedToken {
+                        expected: "identifier".to_string(),
+                        found: format!("{:?}", left.node),
+                        pos: left.pos,
+                    })
+                }
+            }
+            _ => {
+                let op = self.token_to_op(&token).ok_or(ParseError::InvalidExpression(pos))?;
+                let precedence = self.op_precedence(&op);
+                // Precedence threshold for recursive call
+                // Left-associative: threshold is current op precedence (so it stops at same precedence)
+                // Right-associative: threshold is one level BELOW current op precedence (so it continues at same precedence)
+                let next_precedence = if op == Op::Pow {
+                    // Right associative: Power is higher than Product
+                    Precedence::Product
+                } else {
+                    precedence
+                };
+
+                let right = self.parse_spanned_expr(next_precedence)?;
+                let combined_pos = left.pos.clone(); 
+                Ok(Spanned::new(Expr::Binary(Box::new(left), op, Box::new(right)), combined_pos))
+            }
+        }
+    }
+
+    fn peek_precedence(&self) -> Precedence {
+        match self.peek() {
+            Some((t, _)) => self.token_to_precedence(t),
+            _ => Precedence::Lowest
+        }
+    }
+
+    fn token_to_precedence(&self, token: &Token) -> Precedence {
+        match token {
+            Token::LParen => Precedence::Call,
+            Token::Dot => Precedence::Call,
+            Token::LBracket => Precedence::Call,
+            Token::Is => Precedence::Comparison,
+            Token::As => Precedence::Comparison,
+            Token::DestructAssign => Precedence::Assignment,
+            _ => if let Some(op) = self.token_to_op(token) {
+                self.op_precedence(&op)
+            } else {
+                Precedence::Lowest
+            }
+        }
+    }
+
+    // --- Specific Expression Parsers ---
+
+    fn parse_let_expr(&mut self, pos: Position) -> Result<Spanned<Expr>, ParseError> {
+        let mut bindings = Vec::new();
+        loop {
+            let name = match self.advance()?.0 {
+                Token::Identifier(n) => n,
+                t => return Err(ParseError::UnexpectedToken {
+                    expected: "identifier".to_string(),
+                    found: format!("{:?}", t),
+                    pos: self.peek_pos(),
+                }),
+            };
+
+            let type_annotation = if self.match_token(&Token::Colon) {
+                Some(self.parse_type_annotation()?)
+            } else {
+                None
+            };
+
+            self.consume(&Token::Assign, "Expected '=' in let binding")?;
+            let init = self.parse_spanned_expr(Precedence::Lowest)?;
+            bindings.push((name, type_annotation, init));
+
+            if !self.match_token(&Token::Comma) {
+                break;
+            }
+        }
+
+        self.consume(&Token::In, "Expected 'in' after let bindings")?;
+        let body = self.parse_spanned_expr(Precedence::Lowest)?;
+
+        Ok(Spanned::new(Expr::Let { bindings, body: Box::new(body) }, pos))
+    }
+
+    fn parse_if_expr(&mut self, pos: Position) -> Result<Spanned<Expr>, ParseError> {
+        self.consume(&Token::LParen, "Expected '(' after if")?;
+        let cond = self.parse_spanned_expr(Precedence::Lowest)?;
+        self.consume(&Token::RParen, "Expected ')' after if condition")?;
+        
+        let then_expr = self.parse_spanned_expr(Precedence::Lowest)?;
+        
+        let else_expr = if self.match_token(&Token::Else) {
+            self.parse_spanned_expr(Precedence::Lowest)?
+        } else if self.match_token(&Token::Elif) {
+            // Hulk doesn't have elif in AST usually, it's just nested if
+            self.parse_if_expr(self.peek_pos())?
+        } else {
+            return Err(ParseError::UnexpectedToken {
+                expected: "else or elif".to_string(),
+                found: self.peek_description(),
+                pos: self.peek_pos(),
+            });
+        };
+
+        Ok(Spanned::new(Expr::If {
+            cond: Box::new(cond),
+            then_expr: Box::new(then_expr),
+            else_expr: Box::new(else_expr),
+        }, pos))
+    }
+
+    fn parse_while_expr(&mut self, pos: Position) -> Result<Spanned<Expr>, ParseError> {
+        self.consume(&Token::LParen, "Expected '(' after while")?;
+        let cond = self.parse_spanned_expr(Precedence::Lowest)?;
+        self.consume(&Token::RParen, "Expected ')' after while condition")?;
+        
+        let body = self.parse_spanned_expr(Precedence::Lowest)?;
+        
+        Ok(Spanned::new(Expr::While {
+            cond: Box::new(cond),
+            body: Box::new(body),
+        }, pos))
+    }
+
+    fn parse_for_expr(&mut self, pos: Position) -> Result<Spanned<Expr>, ParseError> {
+        self.consume(&Token::LParen, "Expected '(' after for")?;
+        
+        let var = match self.advance()?.0 {
+            Token::Identifier(n) => n,
+            t => return Err(ParseError::UnexpectedToken {
+                expected: "identifier".to_string(),
+                found: format!("{:?}", t),
+                pos: self.peek_pos(),
+            }),
+        };
+
+        self.consume(&Token::In, "Expected 'in' after for variable")?;
+        let iterable = self.parse_spanned_expr(Precedence::Lowest)?;
+        self.consume(&Token::RParen, "Expected ')' after for iterable")?;
+        
+        let body = self.parse_spanned_expr(Precedence::Lowest)?;
+
+        Ok(Spanned::new(Expr::For {
+            var,
+            iterable: Box::new(iterable),
+            body: Box::new(body),
+        }, pos))
+    }
+
+    fn parse_block_expr(&mut self, pos: Position) -> Result<Spanned<Expr>, ParseError> {
+        let mut exprs = Vec::new();
+        while !self.check(&Token::RBrace) && !self.at_end() {
+            exprs.push(self.parse_spanned_expr(Precedence::Lowest)?);
+            // Semicolons are usually separators in HULK blocks
+            let _ = self.match_token(&Token::Semicolon);
+        }
+        self.consume(&Token::RBrace, "Expected '}' after block")?;
+        Ok(Spanned::new(Expr::Block(exprs), pos))
+    }
+
+    fn parse_instantiation_expr(&mut self, pos: Position) -> Result<Spanned<Expr>, ParseError> {
+        let ty = match self.advance()?.0 {
+            Token::Identifier(n) => n,
+            t => return Err(ParseError::UnexpectedToken {
+                expected: "type name".to_string(),
+                found: format!("{:?}", t),
+                pos: self.peek_pos(),
+            }),
+        };
+
+        self.consume(&Token::LParen, "Expected '(' in instantiation")?;
+        let mut args = Vec::new();
+        if !self.check(&Token::RParen) {
+            loop {
+                args.push(self.parse_spanned_expr(Precedence::Lowest)?);
+                if !self.match_token(&Token::Comma) {
+                    break;
+                }
+            }
+        }
+        self.consume(&Token::RParen, "Expected ')' after instantiation arguments")?;
+
+        Ok(Spanned::new(Expr::Instantiation { ty, args }, pos))
+    }
+
+    fn parse_vector_expr(&mut self, pos: Position) -> Result<Spanned<Expr>, ParseError> {
+        if self.check(&Token::RBracket) {
+            self.advance()?;
+            return Ok(Spanned::new(Expr::VectorLiteral(Vec::new()), pos));
+        }
+
+        // Use Precedence::Or to stop at the '|' symbol if it's a generator
+        let first = self.parse_spanned_expr(Precedence::Or)?;
+
+        if self.match_token(&Token::Or) {
+            // It's a generator: [expr | var in iterable]
+            let var = match self.advance()?.0 {
+                Token::Identifier(n) => n,
+                t => return Err(ParseError::UnexpectedToken {
+                    expected: "identifier".to_string(),
+                    found: format!("{:?}", t),
+                    pos: self.peek_pos(),
+                }),
+            };
+
+            self.consume(&Token::In, "Expected 'in' after variable in generator")?;
+            let iterable = self.parse_spanned_expr(Precedence::Lowest)?;
+            self.consume(&Token::RBracket, "Expected ']' after generator")?;
+
+            Ok(Spanned::new(Expr::VectorGenerator {
+                expr: Box::new(first),
+                var,
+                iterable: Box::new(iterable),
+            }, pos))
+        } else {
+            // It's a literal: [e1, e2, ...]
+            let mut exprs = vec![first];
+            while self.match_token(&Token::Comma) {
+                exprs.push(self.parse_spanned_expr(Precedence::Lowest)?);
+            }
+            self.consume(&Token::RBracket, "Expected ']' after vector")?;
+            Ok(Spanned::new(Expr::VectorLiteral(exprs), pos))
+        }
+    }
+
+    fn parse_call_expr(&mut self, left: Spanned<Expr>, _pos: Position) -> Result<Spanned<Expr>, ParseError> {
+        let func_name = match left.node {
+            Expr::Identifier(n) => n,
+            _ => return Err(ParseError::UnexpectedToken {
+                expected: "function name".to_string(),
+                found: format!("{:?}", left.node),
+                pos: left.pos,
+            }),
+        };
+
+        let mut args = Vec::new();
+        if !self.check(&Token::RParen) {
+            loop {
+                args.push(self.parse_spanned_expr(Precedence::Lowest)?);
+                if !self.match_token(&Token::Comma) {
+                    break;
+                }
+            }
+        }
+        self.consume(&Token::RParen, "Expected ')' after call arguments")?;
+
+        Ok(Spanned::new(Expr::Call { func: func_name, args }, left.pos))
+    }
+
+    fn parse_member_access(&mut self, left: Spanned<Expr>, pos: Position) -> Result<Spanned<Expr>, ParseError> {
+        let name = match self.advance()?.0 {
+            Token::Identifier(n) => n,
+            t => return Err(ParseError::UnexpectedToken {
+                expected: "identifier".to_string(),
+                found: format!("{:?}", t),
+                pos,
+            }),
+        };
+
+        if self.match_token(&Token::LParen) {
+            let mut args = Vec::new();
+            if !self.check(&Token::RParen) {
+                loop {
+                    args.push(self.parse_spanned_expr(Precedence::Lowest)?);
+                    if !self.match_token(&Token::Comma) {
+                        break;
+                    }
+                }
+            }
+            self.consume(&Token::RParen, "Expected ')' after method arguments")?;
+            Ok(Spanned::new(Expr::MethodCall { obj: Box::new(left), method: name, args }, pos))
+        } else {
+            Ok(Spanned::new(Expr::AttributeAccess { obj: Box::new(left), attribute: name }, pos))
+        }
+    }
+
+    fn parse_indexing_expr(&mut self, left: Spanned<Expr>, pos: Position) -> Result<Spanned<Expr>, ParseError> {
+        let index = self.parse_spanned_expr(Precedence::Lowest)?;
+        self.consume(&Token::RBracket, "Expected ']' after index")?;
+        Ok(Spanned::new(Expr::Indexing { obj: Box::new(left), index: Box::new(index) }, pos))
+    }
+
+    fn at_end(&self) -> bool {
+        self.current >= self.tokens.len() || self.tokens[self.current].0 == Token::EOF
+    }
+
+    fn is_expr_start(&self) -> bool {
+        !self.check(&Token::Function) && !self.check(&Token::Type) && !self.check(&Token::Protocol)
+    }
+
+    fn token_to_op(&self, token: &Token) -> Option<Op> {
+        match token {
+            Token::Plus => Some(Op::Add),
+            Token::Minus => Some(Op::Sub),
+            Token::Star => Some(Op::Mul),
+            Token::Slash => Some(Op::Div),
+            Token::Percent => Some(Op::Mod),
+            Token::Power => Some(Op::Pow),
+            Token::Equal => Some(Op::Eq),
+            Token::NotEqual => Some(Op::Neq),
+            Token::LessThan => Some(Op::Lt),
+            Token::GreaterThan => Some(Op::Gt),
+            Token::LessThanEq => Some(Op::Le),
+            Token::GreaterThanEq => Some(Op::Ge),
+            Token::And => Some(Op::And),
+            Token::Or => Some(Op::Or),
+            Token::Concat => Some(Op::Concat),
+            Token::ConcatSpace => Some(Op::ConcatSpace),
+            _ => None,
+        }
+    }
+
+    fn op_precedence(&self, op: &Op) -> Precedence {
+        match op {
+            Op::Or => Precedence::Or,
+            Op::And => Precedence::And,
+            Op::Eq | Op::Neq | Op::Lt | Op::Gt | Op::Le | Op::Ge => Precedence::Comparison,
+            Op::Concat | Op::ConcatSpace => Precedence::Concat,
+            Op::Add | Op::Sub => Precedence::Sum,
+            Op::Mul | Op::Div | Op::Mod => Precedence::Product,
+            Op::Pow => Precedence::Power,
+        }
+    }
+
+    // --- Declaration Parsers ---
+
+    fn parse_function_decl(&mut self) -> Result<FunctionDecl, ParseError> {
+        let name = match self.advance()?.0 {
+            Token::Identifier(n) => n,
+            t => return Err(ParseError::UnexpectedToken {
+                expected: "function name".to_string(),
+                found: format!("{:?}", t),
+                pos: self.peek_pos(),
+            }),
+        };
+
+        self.consume(&Token::LParen, "Expected '(' after function name")?;
+        let params = self.parse_params()?;
+        self.consume(&Token::RParen, "Expected ')' after function parameters")?;
+
+        let return_type = if self.match_token(&Token::Colon) {
+            Some(self.parse_type_annotation()?)
+        } else {
+            None
+        };
+
+        let body = if self.match_token(&Token::FuncArrow) {
+            let e = self.parse_spanned_expr(Precedence::Lowest)?;
+            self.consume(&Token::Semicolon, "Expected ';' after inline function body")?;
+            e
+        } else {
+            let pos = self.peek_pos();
+            self.consume(&Token::LBrace, "Expected '=>' or '{' for function body")?;
+            let b = self.parse_block_expr(pos)?;
+            self.match_token(&Token::Semicolon); // Optional semicolon after }
+            b
+        };
+
+        Ok(FunctionDecl {
+            name,
+            params,
+            return_type,
+            body,
+        })
+    }
+
+    fn parse_type_decl(&mut self) -> Result<TypeDecl, ParseError> {
+        let name = match self.advance()?.0 {
+            Token::Identifier(n) => n,
+            t => return Err(ParseError::UnexpectedToken {
+                expected: "type name".to_string(),
+                found: format!("{:?}", t),
+                pos: self.peek_pos(),
+            }),
+        };
+
+        let params = if self.match_token(&Token::LParen) {
+            let p = self.parse_params()?;
+            self.consume(&Token::RParen, "Expected ')' after type parameters")?;
+            p
+        } else {
+            Vec::new()
+        };
+
+        let parent = if self.match_token(&Token::Inherits) {
+            let parent_name = match self.advance()?.0 {
+                Token::Identifier(n) => n,
+                t => return Err(ParseError::UnexpectedToken {
+                    expected: "parent type name".to_string(),
+                    found: format!("{:?}", t),
+                    pos: self.peek_pos(),
+                }),
+            };
+
+            let args = if self.match_token(&Token::LParen) {
+                let mut a = Vec::new();
+                if !self.check(&Token::RParen) {
+                    loop {
+                        a.push(self.parse_spanned_expr(Precedence::Lowest)?);
+                        if !self.match_token(&Token::Comma) {
+                            break;
+                        }
+                    }
+                }
+                self.consume(&Token::RParen, "Expected ')' after parent constructor arguments")?;
+                a
+            } else {
+                Vec::new()
+            };
+
+            Some(TypeInit { name: parent_name, args })
+        } else {
+            None
+        };
+
+        self.consume(&Token::LBrace, "Expected '{' to start type body")?;
+        
+        let mut attributes = Vec::new();
+        let mut methods = Vec::new();
+
+        while !self.check(&Token::RBrace) && !self.at_end() {
+            if self.match_token(&Token::Function) {
+                methods.push(self.parse_function_decl()?);
+            } else {
+                // Could be a method without 'function' keyword or an attribute
+                // Lookahead to check if it's name(...)
+                let is_method = if let Some((Token::Identifier(_), _)) = self.peek() {
+                    if let Some((Token::LParen, _)) = self.tokens.get(self.current + 1) {
+                        true
+                    } else {
+                        false
+                    }
+                } else {
+                    false
+                };
+
+                if is_method {
+                    methods.push(self.parse_function_decl()?);
+                } else {
+                    // Attribute
+                    let attr_name = match self.advance()?.0 {
+                        Token::Identifier(n) => n,
+                        t => return Err(ParseError::UnexpectedToken {
+                            expected: "attribute or method".to_string(),
+                            found: format!("{:?}", t),
+                            pos: self.peek_pos(),
+                        }),
+                    };
+
+                    let type_annotation = if self.match_token(&Token::Colon) {
+                        Some(self.parse_type_annotation()?)
+                    } else {
+                        None
+                    };
+
+                    self.consume(&Token::Assign, "Expected '=' after attribute name")?;
+                    let init = self.parse_spanned_expr(Precedence::Lowest)?;
+                    self.consume(&Token::Semicolon, "Expected ';' after attribute")?;
+                    
+                    attributes.push(Attribute { name: attr_name, type_annotation, init });
+                }
+            }
+        }
+
+        self.consume(&Token::RBrace, "Expected '}' after type body")?;
+
+        Ok(TypeDecl {
+            name,
+            params,
+            parent,
+            attributes,
+            methods,
+        })
+    }
+
+    fn parse_protocol_decl(&mut self) -> Result<ProtocolDecl, ParseError> {
+        let name = match self.advance()?.0 {
+            Token::Identifier(n) => n,
+            t => return Err(ParseError::UnexpectedToken {
+                expected: "protocol name".to_string(),
+                found: format!("{:?}", t),
+                pos: self.peek_pos(),
+            }),
+        };
+
+        let parent = if self.match_token(&Token::Extends) {
+            match self.advance()?.0 {
+                Token::Identifier(n) => Some(n),
+                t => return Err(ParseError::UnexpectedToken {
+                    expected: "parent protocol name".to_string(),
+                    found: format!("{:?}", t),
+                    pos: self.peek_pos(),
+                }),
+            }
+        } else {
+            None
+        };
+
+        self.consume(&Token::LBrace, "Expected '{' to start protocol body")?;
+        
+        let mut methods = Vec::new();
+        while !self.check(&Token::RBrace) && !self.at_end() {
+            let method_name = match self.advance()?.0 {
+                Token::Identifier(n) => n,
+                t => return Err(ParseError::UnexpectedToken {
+                    expected: "method name".to_string(),
+                    found: format!("{:?}", t),
+                    pos: self.peek_pos(),
+                }),
+            };
+
+            self.consume(&Token::LParen, "Expected '(' after method name")?;
+            let params = self.parse_params()?;
+            self.consume(&Token::RParen, "Expected ')' after method parameters")?;
+            self.consume(&Token::Colon, "Protocols methods must have a return type")?;
+            
+            let return_type = self.parse_type_annotation()?;
+
+            self.consume(&Token::Semicolon, "Expected ';' after method signature")?;
+            methods.push(MethodSignature { name: method_name, params, return_type });
+        }
+
+        self.consume(&Token::RBrace, "Expected '}' after protocol body")?;
+
+        Ok(ProtocolDecl {
+            name,
+            parent,
+            methods,
+        })
+    }
+
+    fn parse_type_annotation(&mut self) -> Result<TypeAnnotation, ParseError> {
+        if self.match_token(&Token::LParen) {
+            let mut params = Vec::new();
+            if !self.check(&Token::RParen) {
+                loop {
+                    params.push(self.parse_type_annotation()?);
+                    if !self.match_token(&Token::Comma) {
+                        break;
+                    }
+                }
+            }
+            self.consume(&Token::RParen, "Expected ')' after type params")?;
+            self.consume(&Token::TypeArrow, "Expected '->' for function type")?;
+            let return_type = self.parse_type_annotation()?;
+            Ok(TypeAnnotation::Function {
+                params,
+                return_type: Box::new(return_type),
+            })
+        } else {
+            let name = match self.advance()?.0 {
+                Token::Identifier(n) => n,
+                t => return Err(ParseError::UnexpectedToken {
+                    expected: "type name".to_string(),
+                    found: format!("{:?}", t),
+                    pos: self.peek_pos(),
+                }),
+            };
+            
+            let mut ty = TypeAnnotation::Name(name);
+            while self.match_token(&Token::Star) {
+                ty = TypeAnnotation::Iterable(Box::new(ty));
+            }
+            Ok(ty)
+        }
+    }
+
+    fn parse_params(&mut self) -> Result<Vec<Param>, ParseError> {
+        let mut params = Vec::new();
+        if !self.check(&Token::RParen) {
+            loop {
+                let name = match self.advance()?.0 {
+                    Token::Identifier(n) => n,
+                    t => return Err(ParseError::UnexpectedToken {
+                        expected: "parameter name".to_string(),
+                        found: format!("{:?}", t),
+                        pos: self.peek_pos(),
+                    }),
+                };
+
+                let type_annotation = if self.match_token(&Token::Colon) {
+                    Some(self.parse_type_annotation()?)
+                } else {
+                    None
+                };
+
+                params.push(Param { name, type_annotation });
+
+                if !self.match_token(&Token::Comma) {
+                    break;
+                }
+            }
+        }
+        Ok(params)
+    }
+}
+
+#[derive(Debug, PartialEq, PartialOrd, Clone, Copy)]
+enum Precedence {
+    Lowest,
+    Assignment,
+    Or,
+    And,
+    Comparison,
+    Concat,
+    Sum,
+    Product,
+    Power,
+    Unary,
+    Call,
+}
+
+
+#[cfg(test)]
+mod tests;

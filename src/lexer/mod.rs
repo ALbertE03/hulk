@@ -148,6 +148,9 @@ impl<'a> Lexer<'a> {
             "true" => Token::True,
             "false" => Token::False,
             "in" => Token::In,
+            "base" => Token::Base,
+            "elif" => Token::Elif,
+            "extends" => Token::Extends,
             _ => Token::Identifier(ident),
         }
     }
@@ -204,12 +207,19 @@ impl<'a> Iterator for Lexer<'a> {
             '-' => {
                 if let Some(&'>') = self.peek_char() {
                     self.next_char();
-                    Ok(Token::Arrow) // ->
+                    Ok(Token::TypeArrow) // ->
                 } else {
                     Ok(Token::Minus)
                 }
             },
-            '*' => Ok(Token::Star),
+            '*' => {
+                if let Some(&'*') = self.peek_char() {
+                    self.next_char();
+                    Ok(Token::Power) // ** as alias for ^
+                } else {
+                    Ok(Token::Star)
+                }
+            },
             '/' => Ok(Token::Slash), // Comments handled above, so this is division
             '%' => Ok(Token::Percent),
             '^' => Ok(Token::Power),
@@ -220,7 +230,7 @@ impl<'a> Iterator for Lexer<'a> {
                     Ok(Token::Equal)
                 } else if let Some(&'>') = self.peek_char() {
                     self.next_char();
-                    Ok(Token::Arrow) 
+                    Ok(Token::FuncArrow) 
                 } else {
                     Ok(Token::Assign)
                 }

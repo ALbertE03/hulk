@@ -49,7 +49,7 @@ fn test_compound_operators() {
     assert_eq!(lexer.next().unwrap().unwrap().0, NotEqual);
     assert_eq!(lexer.next().unwrap().unwrap().0, LessThanEq);
     assert_eq!(lexer.next().unwrap().unwrap().0, GreaterThanEq);
-    assert_eq!(lexer.next().unwrap().unwrap().0, Arrow); 
+    assert_eq!(lexer.next().unwrap().unwrap().0, FuncArrow); 
     assert_eq!(lexer.next().unwrap().unwrap().0, DestructAssign);
     assert_eq!(lexer.next().unwrap().unwrap().0, ConcatSpace);
     assert_eq!(lexer.next().unwrap().unwrap().0, Concat);
@@ -87,7 +87,7 @@ fn test_ackermann_function() {
     
     let tokens: Vec<Token> = Lexer::new(input).map(|r| r.unwrap().0).collect();
     let expected = vec![
-        Function, Identifier("ackermann".to_string()), LParen, Identifier("m".to_string()), Colon, Identifier("Number".to_string()), Comma, Identifier("n".to_string()), Colon, Identifier("Number".to_string()), RParen, Arrow,
+        Function, Identifier("ackermann".to_string()), LParen, Identifier("m".to_string()), Colon, Identifier("Number".to_string()), Comma, Identifier("n".to_string()), Colon, Identifier("Number".to_string()), RParen, FuncArrow,
         If, LParen, Identifier("m".to_string()), Equal, Number(0.0), RParen, Identifier("n".to_string()), Plus, Number(1.0),
         Else, If, LParen, Identifier("n".to_string()), Equal, Number(0.0), RParen, Identifier("ackermann".to_string()), LParen, Identifier("m".to_string()), Minus, Number(1.0), Comma, Number(1.0), RParen,
         Else, Identifier("ackermann".to_string()), LParen, Identifier("m".to_string()), Minus, Number(1.0), Comma, Identifier("ackermann".to_string()), LParen, Identifier("m".to_string()), Comma, Identifier("n".to_string()), Minus, Number(1.0), RParen, RParen, Semicolon
@@ -107,7 +107,7 @@ fn test_type_definition() {
         Type, Identifier("Point".to_string()), LBrace,
         Identifier("x".to_string()), Assign, Number(0.0), Semicolon,
         Identifier("y".to_string()), Assign, Number(0.0), Semicolon,
-        Function, Identifier("distance".to_string()), LParen, Identifier("other".to_string()), Colon, Identifier("Point".to_string()), RParen, Arrow,
+        Function, Identifier("distance".to_string()), LParen, Identifier("other".to_string()), Colon, Identifier("Point".to_string()), RParen, FuncArrow,
         LParen, Identifier("self".to_string()), Dot, Identifier("x".to_string()), Minus, Identifier("other".to_string()), Dot, Identifier("x".to_string()), RParen, Power, Number(2.0),
         Plus,
         LParen, Identifier("self".to_string()), Dot, Identifier("y".to_string()), Minus, Identifier("other".to_string()), Dot, Identifier("y".to_string()), RParen, Power, Number(2.0), Semicolon,
@@ -244,7 +244,7 @@ fn test_large_program() {
     let tokens: Vec<Token> = tokens_res.into_iter().map(|r| r.unwrap().0).collect();
   
     let expected = vec![
-        Function, Identifier("fib".to_string()), LParen, Identifier("n".to_string()), RParen, Arrow,
+        Function, Identifier("fib".to_string()), LParen, Identifier("n".to_string()), RParen, FuncArrow,
         If, LParen, Identifier("n".to_string()), LessThanEq, Number(1.0), RParen, Identifier("n".to_string()),
         Else, Identifier("fib".to_string()), LParen, Identifier("n".to_string()), Minus, Number(1.0), RParen,
         Plus, Identifier("fib".to_string()), LParen, Identifier("n".to_string()), Minus, Number(2.0), RParen, Semicolon,
@@ -252,7 +252,7 @@ fn test_large_program() {
         Type, Identifier("Person".to_string()), LParen, Identifier("name".to_string()), Comma, Identifier("age".to_string()), RParen, LBrace,
         Identifier("name".to_string()), Assign, Identifier("name".to_string()), Semicolon,
         Identifier("age".to_string()), Assign, Identifier("age".to_string()), Semicolon,
-        Identifier("hello".to_string()), LParen, RParen, Arrow, Print, LParen,
+        Identifier("hello".to_string()), LParen, RParen, FuncArrow, Print, LParen,
         StringLiteral("Hello, I am ".to_string()), Concat, Identifier("self".to_string()), Dot, Identifier("name".to_string()),
         ConcatSpace, StringLiteral("and I have ".to_string()), Concat, Identifier("self".to_string()), Dot, Identifier("age".to_string()),
         ConcatSpace, StringLiteral("years old".to_string()), RParen, Semicolon,
@@ -332,7 +332,7 @@ fn test_function_block() {
     let tokens: Vec<Token> = tokens_res.into_iter().map(|r| r.unwrap().0).collect();
     
     let expected = vec![
-        Function, Identifier("add".to_string()), LParen, Identifier("a".to_string()), Comma, Identifier("b".to_string()), RParen, Arrow,
+        Function, Identifier("add".to_string()), LParen, Identifier("a".to_string()), Comma, Identifier("b".to_string()), RParen, FuncArrow,
         LBrace, Let, Identifier("result".to_string()), Assign, Identifier("a".to_string()), Plus, Identifier("b".to_string()), Semicolon,
         Identifier("result".to_string()), Semicolon, RBrace
     ];
@@ -371,3 +371,270 @@ fn test_errors() {
     let mut lexer = Lexer::new(input);
     assert!(matches!(lexer.next(), Some(Err(LexError::UnexpectedCharacter('#', _)))));
 }
+
+#[test]
+fn test_new_hulk_features() {
+    let input = "elif extends is as base -> => Number*";
+    let tokens: Vec<Token> = Lexer::new(input).map(|r| r.unwrap().0).collect();
+    let expected = vec![
+        Elif, Extends, Is, As, Base, TypeArrow, FuncArrow, Identifier("Number".to_string()), Star
+    ];
+    assert_eq!(tokens, expected);
+}
+
+#[test]
+fn test_complex_lambda_and_types() {
+    let input = "function count_when(numbers: Number*, filter: (Number) -> Boolean) => 0;
+                 let numbers = range(0, 100) in print(count_when(numbers, (x: Number): Boolean => x % 2 == 0));";
+    
+    let tokens: Vec<Token> = Lexer::new(input).map(|r| r.unwrap().0).collect();
+    // Just verify key tokens are present to ensure correct arrow distinction
+    assert!(tokens.contains(&TypeArrow));
+    assert!(tokens.contains(&FuncArrow));
+    assert!(tokens.contains(&Base).is_falsy()); // wait, no base here
+}
+
+#[test]
+fn test_nominal_typing_inheritance() {
+    let input = "type B inherits A { } protocol P extends Q { }";
+    let tokens: Vec<Token> = Lexer::new(input).map(|r| r.unwrap().0).collect();
+    let expected = vec![
+        Type, Identifier("B".to_string()), Inherits, Identifier("A".to_string()), LBrace, RBrace,
+        Protocol, Identifier("P".to_string()), Extends, Identifier("Q".to_string()), LBrace, RBrace
+    ];
+    assert_eq!(tokens, expected);
+}
+
+#[test]
+fn test_base_call_lexing() {
+    let input = "base() + base.method()";
+    let tokens: Vec<Token> = Lexer::new(input).map(|r| r.unwrap().0).collect();
+    let expected = vec![
+        Base, LParen, RParen, Plus, Base, Dot, Identifier("method".to_string()), LParen, RParen
+    ];
+    assert_eq!(tokens, expected);
+}
+
+#[test]
+fn test_hulk_latest_spec_snippets() {
+    // 8.1 Multiple let variables
+    let input = "let number = 42, text = \"The meaning of life is\" in print(text @ number);";
+    let tokens: Vec<Token> = Lexer::new(input).map(|r| r.unwrap().0).collect();
+    assert!(tokens.contains(&Let));
+    assert!(tokens.contains(&Comma));
+    assert!(tokens.contains(&In));
+
+    // 8.6 Destructive assignment
+    let input = "a := 1;";
+    let tokens: Vec<Token> = Lexer::new(input).map(|r| r.unwrap().0).collect();
+    assert_eq!(tokens, vec![Identifier("a".to_string()), DestructAssign, Number(1.0), Semicolon]);
+
+    // 9.2 Elif
+    let input = "if (mod == 0) \"Magic\" elif (mod % 3 == 1) \"Woke\" else \"Dumb\"";
+    let tokens: Vec<Token> = Lexer::new(input).map(|r| r.unwrap().0).collect();
+    assert!(tokens.contains(&If));
+    assert!(tokens.contains(&Elif));
+    assert!(tokens.contains(&Else));
+
+    // Power aliases
+    let input = "x ^ 2 + y ** 2";
+    let tokens: Vec<Token> = Lexer::new(input).map(|r| r.unwrap().0).collect();
+    assert_eq!(tokens, vec![
+        Identifier("x".to_string()), Power, Number(2.0), 
+        Plus, 
+        Identifier("y".to_string()), Power, Number(2.0)
+    ]);
+}
+
+#[test]
+fn test_exhaustive_hulk_constructs() {
+    let input = r#"
+        protocol P extends Q { 
+            method(a: Number, b: String): Boolean; 
+        }
+        type T(a, b) inherits S(a + b) {
+            attr: Number* = [x + 1 | x in b];
+            func(x: (Number) -> Boolean): Boolean => x(self.attr[0]);
+        }
+        function main() => let x = new T(1, [2, 3]) in {
+            if (x is T) {
+                print(x as T);
+            } elif (false) {
+                base();
+            } else {
+                while (true) {
+                    for (i in x.attr) print(i);
+                    x.attr[0] := x.attr[0] * 2 ** 3;
+                }
+            };
+            (x: Number): Number => x + 1;
+            !true & false | (1 <= 2) != (3 >= 4) < 5 > 6;
+            "escaped \" \n \t \\" @ "concat" @@ 42;
+        }
+    "#;
+    
+    let tokens_res: Vec<_> = Lexer::new(input).collect();
+    for res in &tokens_res {
+        if let Err(e) = res {
+            panic!("Lexing error in exhaustive test: {:?}", e);
+        }
+    }
+    
+    let tokens: Vec<Token> = tokens_res.into_iter().map(|r| r.unwrap().0).collect();
+    
+    let expected = vec![
+        Protocol, Identifier("P".to_string()), Extends, Identifier("Q".to_string()), LBrace,
+        Identifier("method".to_string()), LParen, Identifier("a".to_string()), Colon, Identifier("Number".to_string()), Comma, Identifier("b".to_string()), Colon, Identifier("String".to_string()), RParen, Colon, Identifier("Boolean".to_string()), Semicolon,
+        RBrace,
+        Type, Identifier("T".to_string()), LParen, Identifier("a".to_string()), Comma, Identifier("b".to_string()), RParen, Inherits, Identifier("S".to_string()), LParen, Identifier("a".to_string()), Plus, Identifier("b".to_string()), RParen, LBrace,
+        Identifier("attr".to_string()), Colon, Identifier("Number".to_string()), Star, Assign, LBracket, Identifier("x".to_string()), Plus, Number(1.0), Or, Identifier("x".to_string()), In, Identifier("b".to_string()), RBracket, Semicolon,
+        Identifier("func".to_string()), LParen, Identifier("x".to_string()), Colon, LParen, Identifier("Number".to_string()), RParen, TypeArrow, Identifier("Boolean".to_string()), RParen, Colon, Identifier("Boolean".to_string()), FuncArrow, Identifier("x".to_string()), LParen, Identifier("self".to_string()), Dot, Identifier("attr".to_string()), LBracket, Number(0.0), RBracket, RParen, Semicolon,
+        RBrace,
+        Function, Identifier("main".to_string()), LParen, RParen, FuncArrow, Let, Identifier("x".to_string()), Assign, New, Identifier("T".to_string()), LParen, Number(1.0), Comma, LBracket, Number(2.0), Comma, Number(3.0), RBracket, RParen, In, LBrace,
+        If, LParen, Identifier("x".to_string()), Is, Identifier("T".to_string()), RParen, LBrace,
+        Print, LParen, Identifier("x".to_string()), As, Identifier("T".to_string()), RParen, Semicolon,
+        RBrace, Elif, LParen, False, RParen, LBrace,
+        Base, LParen, RParen, Semicolon,
+        RBrace, Else, LBrace,
+        While, LParen, True, RParen, LBrace,
+        For, LParen, Identifier("i".to_string()), In, Identifier("x".to_string()), Dot, Identifier("attr".to_string()), RParen, Print, LParen, Identifier("i".to_string()), RParen, Semicolon,
+        Identifier("x".to_string()), Dot, Identifier("attr".to_string()), LBracket, Number(0.0), RBracket, DestructAssign, Identifier("x".to_string()), Dot, Identifier("attr".to_string()), LBracket, Number(0.0), RBracket, Star, Number(2.0), Power, Number(3.0), Semicolon,
+        RBrace,
+        RBrace, Semicolon,
+        LParen, Identifier("x".to_string()), Colon, Identifier("Number".to_string()), RParen, Colon, Identifier("Number".to_string()), FuncArrow, Identifier("x".to_string()), Plus, Number(1.0), Semicolon,
+        Not, True, And, False, Or, LParen, Number(1.0), LessThanEq, Number(2.0), RParen, NotEqual, LParen, Number(3.0), GreaterThanEq, Number(4.0), RParen, LessThan, Number(5.0), GreaterThan, Number(6.0), Semicolon,
+        StringLiteral("escaped \" \n \t \\".to_string()), Concat, StringLiteral("concat".to_string()), ConcatSpace, Number(42.0), Semicolon,
+        RBrace
+    ];
+
+    assert_eq!(tokens.len(), expected.len(), "Token count mismatch. Found: {:?}\n\nExpected: {:?}", tokens, expected);
+    for (i, (found, exp)) in tokens.iter().zip(expected.iter()).enumerate() {
+        assert_eq!(found, exp, "Mismatch at index {}: found {:?} expected {:?}", i, found, exp);
+    }
+}
+
+#[test]
+fn test_instantiation() {
+    let input = "new Point(0, 0) + new Complex(1, 2).magnitude()";
+    let tokens: Vec<Token> = Lexer::new(input).map(|r| r.unwrap().0).collect();
+    let expected = vec![
+        New, Identifier("Point".to_string()), LParen, Number(0.0), Comma, Number(0.0), RParen,
+        Plus,
+        New, Identifier("Complex".to_string()), LParen, Number(1.0), Comma, Number(2.0), RParen,
+        Dot, Identifier("magnitude".to_string()), LParen, RParen
+    ];
+    assert_eq!(tokens, expected);
+}
+
+#[test]
+fn test_30_complete_hulk_program() {
+    let input = r#"
+        protocol Hashable {
+            hash(): Number;
+        }
+
+        protocol Comparable extends Hashable {
+            compare(other: Hashable): Number;
+        }
+
+        type Point(x, y) {
+            x = x;
+            y = y;
+            hash() => self.x ^ 2 + self.y ** 2;
+            distance(other: Point) => sqrt((self.x - other.x) ^ 2 + (self.y - other.y) ^ 2);
+        }
+
+        function solve_quadratic(a, b, c) {
+            let disc = b ^ 2 - 4 * a * c in {
+                if (disc < 0) print("No real roots")
+                elif (disc == 0) print(-b / (2 * a))
+                else {
+                    print((-b + sqrt(disc)) / (2 * a));
+                    print((-b - sqrt(disc)) / (2 * a));
+                };
+            };
+        }
+
+        let p1 = new Point(1, 2), 
+            p2 = new Point(3, 4),
+            transformer = (p: Point): Point => new Point(p.x * 2, p.y * 2) 
+        in {
+            print("Distance: " @ p1.distance(p2));
+            let squares = [x ** 2 | x in [1, 2, 3, 4, 5]] in
+                for (s in squares) if (s > 10) print(s);
+            
+            let a = 10 in while (a > 0) {
+                a := a - 1;
+                print(a);
+            };
+            
+            print(if (p1 is Point) "Success" else "Fail");
+            print(p1 as Point);
+        }
+    "#;
+
+    let res: Result<Vec<_>, _> = Lexer::new(input).collect();
+    let tokens: Vec<Token> = res.expect("Failed to lex integral program").into_iter().map(|(t, _)| t).collect();
+    
+    let expected = vec![
+        // protocol Hashable { hash(): Number; }
+        Protocol, Identifier("Hashable".into()), LBrace,
+        Identifier("hash".into()), LParen, RParen, Colon, Identifier("Number".into()), Semicolon,
+        RBrace,
+
+        // protocol Comparable extends Hashable { compare(other: Hashable): Number; }
+        Protocol, Identifier("Comparable".into()), Extends, Identifier("Hashable".into()), LBrace,
+        Identifier("compare".into()), LParen, Identifier("other".into()), Colon, Identifier("Hashable".into()), RParen, Colon, Identifier("Number".into()), Semicolon,
+        RBrace,
+
+        // type Point(x, y) { x = x; y = y; ... }
+        Type, Identifier("Point".into()), LParen, Identifier("x".into()), Comma, Identifier("y".into()), RParen, LBrace,
+        Identifier("x".into()), Assign, Identifier("x".into()), Semicolon,
+        Identifier("y".into()), Assign, Identifier("y".into()), Semicolon,
+        Identifier("hash".into()), LParen, RParen, FuncArrow, Identifier("self".into()), Dot, Identifier("x".into()), Power, Number(2.0), Plus, Identifier("self".into()), Dot, Identifier("y".into()), Power, Number(2.0), Semicolon,
+        Identifier("distance".into()), LParen, Identifier("other".into()), Colon, Identifier("Point".into()), RParen, FuncArrow, Identifier("sqrt".into()), LParen, 
+        LParen, Identifier("self".into()), Dot, Identifier("x".into()), Minus, Identifier("other".into()), Dot, Identifier("x".into()), RParen, Power, Number(2.0), 
+        Plus, 
+        LParen, Identifier("self".into()), Dot, Identifier("y".into()), Minus, Identifier("other".into()), Dot, Identifier("y".into()), RParen, Power, Number(2.0), 
+        RParen, Semicolon,
+        RBrace,
+
+        // function solve_quadratic(a, b, c) { ... }
+        Function, Identifier("solve_quadratic".into()), LParen, Identifier("a".into()), Comma, Identifier("b".into()), Comma, Identifier("c".into()), RParen, LBrace,
+        Let, Identifier("disc".into()), Assign, Identifier("b".into()), Power, Number(2.0), Minus, Number(4.0), Star, Identifier("a".into()), Star, Identifier("c".into()), In, LBrace,
+        If, LParen, Identifier("disc".into()), LessThan, Number(0.0), RParen, Print, LParen, StringLiteral("No real roots".into()), RParen,
+        Elif, LParen, Identifier("disc".into()), Equal, Number(0.0), RParen, Print, LParen, Minus, Identifier("b".into()), Slash, LParen, Number(2.0), Star, Identifier("a".into()), RParen, RParen,
+        Else, LBrace,
+        Print, LParen, LParen, Minus, Identifier("b".into()), Plus, Identifier("sqrt".into()), LParen, Identifier("disc".into()), RParen, RParen, Slash, LParen, Number(2.0), Star, Identifier("a".into()), RParen, RParen, Semicolon,
+        Print, LParen, LParen, Minus, Identifier("b".into()), Minus, Identifier("sqrt".into()), LParen, Identifier("disc".into()), RParen, RParen, Slash, LParen, Number(2.0), Star, Identifier("a".into()), RParen, RParen, Semicolon,
+        RBrace, Semicolon,
+        RBrace, Semicolon,
+        RBrace,
+
+        // let p1 = new Point(1, 2), ... in { ... }
+        Let, Identifier("p1".into()), Assign, New, Identifier("Point".into()), LParen, Number(1.0), Comma, Number(2.0), RParen, Comma,
+        Identifier("p2".into()), Assign, New, Identifier("Point".into()), LParen, Number(3.0), Comma, Number(4.0), RParen, Comma,
+        Identifier("transformer".into()), Assign, LParen, Identifier("p".into()), Colon, Identifier("Point".into()), RParen, Colon, Identifier("Point".into()), FuncArrow, New, Identifier("Point".into()), LParen, Identifier("p".into()), Dot, Identifier("x".into()), Star, Number(2.0), Comma, Identifier("p".into()), Dot, Identifier("y".into()), Star, Number(2.0), RParen,
+        In, LBrace,
+        Print, LParen, StringLiteral("Distance: ".into()), Concat, Identifier("p1".into()), Dot, Identifier("distance".into()), LParen, Identifier("p2".into()), RParen, RParen, Semicolon,
+        Let, Identifier("squares".into()), Assign, LBracket, Identifier("x".into()), Power, Number(2.0), Or, Identifier("x".into()), In, LBracket, Number(1.0), Comma, Number(2.0), Comma, Number(3.0), Comma, Number(4.0), Comma, Number(5.0), RBracket, RBracket, In,
+        For, LParen, Identifier("s".into()), In, Identifier("squares".into()), RParen, If, LParen, Identifier("s".into()), GreaterThan, Number(10.0), RParen, Print, LParen, Identifier("s".into()), RParen, Semicolon,
+        
+        Let, Identifier("a".into()), Assign, Number(10.0), In, While, LParen, Identifier("a".into()), GreaterThan, Number(0.0), RParen, LBrace,
+        Identifier("a".into()), DestructAssign, Identifier("a".into()), Minus, Number(1.0), Semicolon,
+        Print, LParen, Identifier("a".into()), RParen, Semicolon,
+        RBrace, Semicolon,
+
+        Print, LParen, If, LParen, Identifier("p1".into()), Is, Identifier("Point".into()), RParen, StringLiteral("Success".into()), Else, StringLiteral("Fail".into()), RParen, Semicolon,
+        Print, LParen, Identifier("p1".into()), As, Identifier("Point".into()), RParen, Semicolon,
+        RBrace
+    ];
+
+    assert_eq!(tokens.len(), expected.len(), "Token count mismatch. Found {}. Expected {}.", tokens.len(), expected.len());
+    for (i, (found, exp)) in tokens.iter().zip(expected.iter()).enumerate() {
+        assert_eq!(found, exp, "Mismatch at index {}: found {:?} expected {:?}", i, found, exp);
+    }
+}
+
+trait BoolExt { fn is_falsy(&self) -> bool; }
+impl BoolExt for bool { fn is_falsy(&self) -> bool { !*self } }

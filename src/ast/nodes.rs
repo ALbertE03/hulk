@@ -1,27 +1,37 @@
 use crate::utils::Spanned;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Program {
     pub declarations: Vec<Declaration>,
     pub expr: Spanned<Expr>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Declaration {
     Function(FunctionDecl),
     Type(TypeDecl),
     Protocol(ProtocolDecl),
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
+pub enum TypeAnnotation {
+    Name(String),
+    Function {
+        params: Vec<TypeAnnotation>,
+        return_type: Box<TypeAnnotation>,
+    },
+    Iterable(Box<TypeAnnotation>),
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct FunctionDecl {
     pub name: String,
     pub params: Vec<Param>,
-    pub return_type: Option<String>,
+    pub return_type: Option<TypeAnnotation>,
     pub body: Spanned<Expr>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct TypeDecl {
     pub name: String,
     pub params: Vec<Param>,      // For constructor arguments
@@ -30,40 +40,40 @@ pub struct TypeDecl {
     pub methods: Vec<FunctionDecl>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct ProtocolDecl {
     pub name: String,
     pub parent: Option<String>,
     pub methods: Vec<MethodSignature>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Param {
     pub name: String,
-    pub type_annotation: Option<String>,
+    pub type_annotation: Option<TypeAnnotation>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct TypeInit {
     pub name: String,
     pub args: Vec<Spanned<Expr>>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Attribute {
     pub name: String,
-    pub type_annotation: Option<String>,
+    pub type_annotation: Option<TypeAnnotation>,
     pub init: Spanned<Expr>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct MethodSignature {
     pub name: String,
     pub params: Vec<Param>,
-    pub return_type: String,
+    pub return_type: TypeAnnotation,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Expr {
     // --- Primitives ---
     Number(f64),
@@ -97,7 +107,7 @@ pub enum Expr {
     Block(Vec<Spanned<Expr>>), 
     
     Let {
-        bindings: Vec<(String, Option<String>, Spanned<Expr>)>,
+        bindings: Vec<(String, Option<TypeAnnotation>, Spanned<Expr>)>,
         body: Box<Spanned<Expr>>,
     },
     
@@ -111,14 +121,28 @@ pub enum Expr {
         func: String,
         args: Vec<Spanned<Expr>>,
     },
+    BaseCall {
+        args: Vec<Spanned<Expr>>,
+    },
     MethodCall {
         obj: Box<Spanned<Expr>>,
         method: String,
         args: Vec<Spanned<Expr>>,
     },
+    AttributeAccess {
+        obj: Box<Spanned<Expr>>,
+        attribute: String,
+    },
     Instantiation {
         ty: String,
         args: Vec<Spanned<Expr>>,
+    },
+
+    // --- Lambdas ---
+    Lambda {
+        params: Vec<Param>,
+        return_type: Option<TypeAnnotation>,
+        body: Box<Spanned<Expr>>,
     },
 
     // --- Type Checks ---
@@ -136,12 +160,22 @@ pub enum Expr {
         obj: Box<Spanned<Expr>>,
         index: Box<Spanned<Expr>>,
     },
+
+    // --- Mathematical Built-ins ---
+    Sqrt(Box<Spanned<Expr>>),
+    Sin(Box<Spanned<Expr>>),
+    Cos(Box<Spanned<Expr>>),
+    Exp(Box<Spanned<Expr>>),
+    Log(Box<Spanned<Expr>>, Box<Spanned<Expr>>),
+    Rand,
+    PI,
+    E,
     
     /// Error node for error recovery
     Error,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Op {
     Add, Sub, Mul, Div, Mod, Pow,
     Eq, Neq, Lt, Gt, Le, Ge,
@@ -151,7 +185,7 @@ pub enum Op {
     ConcatSpace, // @@
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum UnOp {
     Neg, // -
     Not, // !
