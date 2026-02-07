@@ -199,7 +199,7 @@ impl<'a> Iterator for Lexer<'a> {
 
         let token_res = match c {
             '0'..='9' => Ok(self.lex_number(c)),
-            'a'..='z' | 'A'..='Z' | '_' => Ok(self.lex_identifier_or_keyword(c)),
+            'a'..='z' | 'A'..='Z' => Ok(self.lex_identifier_or_keyword(c)),
             '"' => self.lex_string(pos),
             '+' => Ok(Token::Plus),
             '-' => {
