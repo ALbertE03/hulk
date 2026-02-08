@@ -56,7 +56,7 @@
             justify-content: space-between;
             padding: 0 20px;
             flex-shrink: 0;
-            z-index: 10;
+            z-index: 50;
         }
 
         .logo {
@@ -67,6 +67,59 @@
             font-size: 18px;
             letter-spacing: -0.5px;
             user-select: none;
+            min-width: 200px;
+        }
+        
+        .header-tools {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            flex: 1;
+            justify-content: center;
+        }
+
+        .tool-group {
+            display: flex;
+            align-items: center;
+            background: var(--surface-2);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            padding: 4px 10px;
+            height: 36px;
+            gap: 8px;
+        }
+        
+        .tool-group select {
+            background: transparent;
+            border: none;
+            color: var(--text);
+            font-family: var(--ui);
+            font-size: 13px;
+            outline: none;
+            cursor: pointer;
+            min-width: 140px;
+        }
+
+        .icon-btn {
+            background: transparent;
+            border: 1px solid transparent;
+            color: var(--text-2);
+            cursor: pointer;
+            padding: 6px 12px;
+            border-radius: 6px;
+            font-size: 13px;
+            font-family: var(--ui);
+            font-weight: 500;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            transition: all 0.2s;
+            height: 36px;
+        }
+        .icon-btn:hover {
+            background: var(--surface-2);
+            color: var(--text);
+            border-color: var(--border);
         }
 
         .logo-icon {
@@ -464,21 +517,78 @@
             font-size: 13px;
         }
 
-        .docs-container .warning {
-            background: linear-gradient(135deg, rgba(251, 191, 36, 0.08), rgba(251, 191, 36, 0.05));
-            border-left: 4px solid var(--yellow);
-            padding: 12px 16px;
-            border-radius: 0 8px 8px 0;
-            margin: 12px 0;
-            font-size: 12.5px;
-            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+        /* ── MODAL ────────────────────────────────── */
+        .modal-overlay {
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(0, 0, 0, 0.6);
+            backdrop-filter: blur(4px);
+            z-index: 100;
+            display: flex;
+            justify-content: flex-end; /* Slide from right */
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.3s;
+        }
+        .modal-overlay.open {
+            opacity: 1;
+            pointer-events: auto;
         }
 
-        .docs-container .warning strong { 
-            color: var(--yellow);
-            font-size: 13px;
+        .modal-content {
+            width: 500px;
+            max-width: 90vw;
+            height: 100%;
+            background: var(--surface);
+            border-left: 1px solid var(--border);
+            box-shadow: -10px 0 40px rgba(0,0,0,0.5);
+            display: flex;
+            flex-direction: column;
+            transform: translateX(100%);
+            transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+        .modal-overlay.open .modal-content {
+            transform: translateX(0);
         }
 
+        .modal-header {
+            height: 56px;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 20px;
+            flex-shrink: 0;
+            background: var(--surface);
+        }
+        .modal-header h2 {
+            font-size: 16px;
+            color: var(--text);
+            margin: 0;
+            font-weight: 600;
+        }
+        .close-btn {
+            background: transparent;
+            border: none;
+            color: var(--text-3);
+            font-size: 24px;
+            cursor: pointer;
+            width: 32px; height: 32px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 4px;
+            transition: 0.2s;
+        }
+        .close-btn:hover { background: var(--surface-2); color: var(--text); }
+
+        .modal-body {
+            flex: 1;
+            overflow-y: auto;
+            padding: 24px;
+        }
+
+        /* ── PANELS ──────────────────────────────── */
         .editor-panel {
             flex: 1;
             display: flex;
@@ -647,6 +757,28 @@
             <span class="badge success">✓ 169 tests</span>
         </div>
     </div>
+    
+    <div class="header-tools">
+        <div class="tool-group">
+            <span style="font-size: 14px">📝</span>
+            <select id="examples">
+                <option value="">Cargar ejemplo…</option>
+                <option value="hello">🟢 Hello World</option>
+                <option value="math">🔢 Variables y Matemáticas</option>
+                <option value="functions">⚡ Funciones Recursivas</option>
+                <option value="strings">📝 Cadenas</option>
+                <option value="conditionals">🔀 Condicionales</option>
+                <option value="loops">🔄 Ciclos</option>
+                <option value="types">🏗️ Tipos y Herencia</option>
+                <option value="iterables">📦 Iterables y For</option>
+                <option value="demo">🎯 Demo Completo</option>
+            </select>
+        </div>
+        <button id="show-docs-btn" class="icon-btn" title="Ver documentación">
+            <span>📖</span> Documentación
+        </button>
+    </div>
+
     <div class="controls">
         <button id="run-btn">
             <span class="play-icon">▶</span>
@@ -659,31 +791,18 @@
 
 <!-- ════════ MAIN ════════ -->
 <main>
-    <!-- LEFT SIDEBAR: Examples + Documentation -->
-    <div class="left-sidebar" id="sidebar">
-        <div class="sidebar-header">
-            <label>📝 Ejemplos</label>
-            <select id="examples">
-                <option value="">Selecciona…</option>
-                <option value="hello">🟢 Hello World</option>
-                <option value="math">🔢 Variables y Matemáticas</option>
-                <option value="functions">⚡ Funciones Recursivas</option>
-                <option value="strings">📝 Cadenas</option>
-                <option value="conditionals">🔀 Condicionales</option>
-                <option value="loops">🔄 Ciclos</option>
-                <option value="types">🏗️ Tipos y Herencia</option>
-                <option value="iterables">📦 Iterables y For</option>
-                <option value="demo">🎯 Demo Completo</option>
-            </select>
-            <button class="view-toggle" id="view-toggle" title="Ver documentación completa">
-                <span class="icon">📖</span>
-                <span class="label">Docs</span>
-            </button>
-        </div>
-        
-        <div class="docs-container">
-            <h2>HULK Language Reference</h2>
-            <p><strong>H</strong>avana <strong>U</strong>niversity <strong>L</strong>anguage for <strong>K</strong>ompilers</p>
+    <!-- MODAL DOCS -->
+    <div id="docs-overlay" class="modal-overlay">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Documentación HULK</h2>
+                <button id="close-docs-btn" class="close-btn">×</button>
+            </div>
+            <div class="modal-body docs-container">
+                <!-- CONTENIDO DE LA DOCUMENTACIÓN -->
+                
+                <h2>HULK Language Reference</h2>
+                <p><strong>H</strong>avana <strong>U</strong>niversity <strong>L</strong>anguage for <strong>K</strong>ompilers</p>
             <p>HULK es un lenguaje de programación fuertemente tipado con inferencia de tipos, semántica de expresiones, programación funcional, y programación orientada a objetos con herencia y protocolos. El lenguaje compila directamente a LLVM IR para generación eficiente de código nativo.</p>
 
             <div class="warning">
@@ -1430,53 +1549,12 @@ type PrintVisitor() extends Visitor {
     };
 }</code></pre>
 
-            <h2>Optimizaciones del Compilador</h2>
-            <p>El compilador HULK implementa un pipeline de optimización multinivel:</p>
-
-            <h3>Optimizaciones en AST (Pre-LLVM)</h3>
-            <ul>
-                <li><strong>Constant Folding:</strong> Evaluación de expresiones constantes en tiempo de compilación
-                    <pre><code>2 + 3 * 4  →  14
-"Hello" @@ " " @@ "World"  →  "Hello World"</code></pre>
-                </li>
-                <li><strong>Constant Propagation:</strong> Propagación de valores constantes conocidos
-                    <pre><code>let x = 10 in x * 2  →  20</code></pre>
-                </li>
-                <li><strong>Dead Code Elimination:</strong> Eliminación de código inalcanzable
-                    <pre><code>if (true) A else B  →  A
-if (false) A else B  →  B</code></pre>
-                </li>
-                <li><strong>Algebraic Simplification:</strong> Simplificaciones algebraicas
-                    <pre><code>x * 1  →  x
-x + 0  →  x
-x * 0  →  0
-x ** 1  →  x</code></pre>
-                </li>
-                <li><strong>Boolean Short-Circuit:</strong> Optimización de expresiones booleanas
-                    <pre><code>false & expr  →  false
-true | expr   →  true</code></pre>
-                </li>
-                <li><strong>String Interning:</strong> Reutilización de literales de string idénticos</li>
-            </ul>
-
-            <h3>Optimizaciones LLVM</h3>
-            <p>Después de generar LLVM IR, se aplican optimizaciones adicionales:</p>
-            <ul>
-                <li>Inlining de funciones pequeñas</li>
-                <li>Loop unrolling y vectorización</li>
-                <li>Register allocation optimizado</li>
-                <li>Dead store elimination</li>
-                <li>Common subexpression elimination (CSE)</li>
-                <li>Tail call optimization</li>
-            </ul>
-
             <h2>Compilación a LLVM IR</h2>
             <p>HULK utiliza LLVM (Low Level Virtual Machine) como backend de compilación, proporcionando:</p>
 
             <h3>Ventajas de LLVM</h3>
             <ul>
                 <li><strong>Portabilidad:</strong> Generación de código nativo para x86, x86-64, ARM, WebAssembly, etc.</li>
-                <li><strong>Optimizaciones Avanzadas:</strong> Décadas de investigación en optimización de compiladores</li>
                 <li><strong>Interoperabilidad:</strong> Compatibilidad ABI con C/C++ para integración con bibliotecas existentes</li>
                 <li><strong>Performance:</strong> Código generado comparable a C/C++ en la mayoría de casos</li>
                 <li><strong>Tooling:</strong> Acceso a herramientas LLVM (llvm-dis, opt, llc, etc.)</li>
@@ -1487,26 +1565,17 @@ true | expr   →  true</code></pre>
                 <li><strong>Parsing:</strong> Código HULK → AST (Abstract Syntax Tree)</li>
                 <li><strong>Macro Expansion:</strong> Expansión de macros si existen</li>
                 <li><strong>Semantic Analysis:</strong> Type checking, scope resolution, validación de protocolos</li>
-                <li><strong>Optimization Pass:</strong> Optimizaciones a nivel AST</li>
                 <li><strong>LLVM IR Generation:</strong> AST optimizado → LLVM IR textual</li>
-                <li><strong>LLVM Optimization:</strong> Optimizaciones a nivel LLVM (opcional)</li>
                 <li><strong>Code Generation:</strong> LLVM IR → código máquina nativo vía Clang</li>
             </ol>
 
-            <h3>Inspección de LLVM IR</h3>
-            <p>Este playground permite inspeccionar el código LLVM IR generado mediante el tab "LLVM IR". El IR muestra:</p>
-            <ul>
-                <li>Declaraciones de funciones y tipos</li>
-                <li>Instrucciones SSA (Static Single Assignment)</li>
-                <li>Bloques básicos y control flow</li>
-                <li>Llamadas a funciones built-in (printf, sqrt, sin, etc.)</li>
-            </ul>
-
             <div class="tip">
-                <strong>Ejecución Rápida:</strong> Use Command+Enter (macOS) o Ctrl+Enter (Windows/Linux) para compilar y ejecutar el código actual. El tiempo de compilación y ejecución se muestra en la esquina inferior derecha. Cambie al tab "LLVM IR" para inspeccionar el código intermedio generado.
+                <strong>Ejecución Rápida:</strong> Use Command+Enter (macOS) o Ctrl+Enter (Windows/Linux) para compilar y ejecutar el código actual. El tiempo de compilación y ejecución se muestra en la esquina inferior derecha.
             </div>
-        </div>
-    </div>
+            
+            </div> <!-- End docs-container -->
+        </div> <!-- End modal-content -->
+    </div> <!-- End modal-overlay -->
 
     <!-- EDITOR PANEL -->
     <div class="editor-panel">
@@ -1517,9 +1586,8 @@ true | expr   →  true</code></pre>
     </div>
 
     <div class="output-panel">
-        <div class="output-tabs">
-            <button class="tab-btn active" data-tab="output">Salida</button>
-            <button class="tab-btn" data-tab="llvm">LLVM IR</button>
+        <div class="panel-label">
+            <span class="dot"></span> Salida
         </div>
         <div id="output-body" class="output-body">
             <div class="welcome-msg">
@@ -1528,7 +1596,6 @@ true | expr   →  true</code></pre>
                 <div>para compilar y ejecutar tu código HULK</div>
             </div>
         </div>
-        <div id="llvm-body" class="output-body hidden"></div>
     </div>
 </main>
 
@@ -1887,7 +1954,6 @@ require(['vs/editor/editor.main'], function () {
     // ── DOM refs ──
 
     const outputBody  = document.getElementById('output-body');
-    const llvmBody    = document.getElementById('llvm-body');
     const statusDot   = document.getElementById('status-dot');
     const statusText  = document.getElementById('status-text');
     const timeDisplay = document.getElementById('time-display');
@@ -1906,13 +1972,6 @@ require(['vs/editor/editor.main'], function () {
         statusText.textContent = 'Compilando…';
         timeDisplay.textContent = '';
         outputBody.innerHTML = '<span style="color:var(--text-3)">⏳ Compilando y ejecutando…</span>';
-        llvmBody.textContent = '';
-
-        // Cambiar a tab salida
-        document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-        document.querySelector('[data-tab="output"]').classList.add('active');
-        outputBody.classList.remove('hidden');
-        llvmBody.classList.add('hidden');
 
         try {
             const resp = await fetch('/api/run', {
@@ -1936,7 +1995,6 @@ require(['vs/editor/editor.main'], function () {
                 outputBody.innerHTML = html || '<span class="out-err">Error desconocido</span>';
             }
 
-            if (data.llvm_ir) llvmBody.textContent = data.llvm_ir;
             timeDisplay.textContent = data.time_ms + 'ms';
 
         } catch (err) {
@@ -1989,7 +2047,6 @@ require(['vs/editor/editor.main'], function () {
             editor.setValue(EXAMPLES[key]);
             // Reset output
             outputBody.innerHTML = '<div class="welcome-msg"><span class="big-icon">💚</span><div>Código cargado — presiona <strong>▶ Ejecutar</strong></div></div>';
-            llvmBody.textContent = '';
             statusDot.className = 'status-dot';
             statusText.textContent = 'Listo';
             timeDisplay.textContent = '';
@@ -2000,45 +2057,51 @@ require(['vs/editor/editor.main'], function () {
     // ── Botón ejecutar ──
     document.getElementById('run-btn').addEventListener('click', () => window.runCode());
 
-    // ── View Toggle (Editor ↔ Docs) ──
+    // ── Docs Modal Handling ──
     
-    const sidebar = document.getElementById('sidebar');
-    const editorPanel = document.querySelector('.editor-panel');
-    const outputPanel = document.querySelector('.output-panel');
-    const viewToggle = document.getElementById('view-toggle');
-    let docsMode = false;
+    const docsOverlay = document.getElementById('docs-overlay');
+    const showDocsBtn = document.getElementById('show-docs-btn');
+    const closeDocsBtn = document.getElementById('close-docs-btn');
 
-    viewToggle.addEventListener('click', () => {
-        docsMode = !docsMode;
-        
-        if (docsMode) {
-            sidebar.classList.add('expanded');
-            editorPanel.classList.add('hidden');
-            outputPanel.classList.add('hidden');
-            viewToggle.classList.add('active');
-            viewToggle.querySelector('.label').textContent = 'Editor';
-            viewToggle.querySelector('.icon').textContent = '⌨️';
-            viewToggle.title = 'Volver al editor';
+    function toggleDocs(show) {
+        if (show) {
+            docsOverlay.classList.remove('hidden');
+            // Force reflow
+            void docsOverlay.offsetWidth;
+            docsOverlay.classList.add('open');
         } else {
-            sidebar.classList.remove('expanded');
-            editorPanel.classList.remove('hidden');
-            outputPanel.classList.remove('hidden');
-            viewToggle.classList.remove('active');
-            viewToggle.querySelector('.label').textContent = 'Docs';
-            viewToggle.querySelector('.icon').textContent = '📖';
-            viewToggle.title = 'Ver documentación completa';
+            docsOverlay.classList.remove('open');
+            setTimeout(() => {
+                if (!docsOverlay.classList.contains('open')) {
+                    docsOverlay.classList.add('hidden');
+                }
+            }, 300);
+        }
+    }
+
+    if(showDocsBtn) showDocsBtn.addEventListener('click', () => toggleDocs(true));
+    if(closeDocsBtn) closeDocsBtn.addEventListener('click', () => toggleDocs(false));
+    
+    // Close on click outside
+    if(docsOverlay) {
+        docsOverlay.addEventListener('click', (e) => {
+            if (e.target === docsOverlay) toggleDocs(false);
+        });
+    }
+    // Close on Escape
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && docsOverlay && docsOverlay.classList.contains('open')) {
+            toggleDocs(false);
         }
     });
 
     // ── Tabs ──
-
     document.querySelectorAll('.tab-btn').forEach(btn => {
         btn.addEventListener('click', function () {
             document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
             this.classList.add('active');
             const tab = this.dataset.tab;
             outputBody.classList.toggle('hidden', tab !== 'output');
-            llvmBody.classList.toggle('hidden', tab !== 'llvm');
         });
     });
 });
