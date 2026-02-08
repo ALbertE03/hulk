@@ -90,9 +90,38 @@ fn compile_and_run(code: &str) -> RunResponse {
         };
     }
 
-    // 7) Compilar con clang
+    // 7) Generar LLVM IR optimizado para mostrar
+    let optimized_ll_path = temp_dir.join("hulk_playground_opt.ll");
+    let opt_result = Command::new("clang")
+        .args([
+            "-S",                           // Generar assembly/IR
+            "-emit-llvm",                   // Emitir LLVM IR
+            "-O3",                          // Optimizaciones
+            "-o",
+            optimized_ll_path.to_str().unwrap(),
+            ll_path.to_str().unwrap(),
+            "-lm",
+            "-Wno-override-module",
+        ])
+        .stderr(Stdio::piped())
+        .output();
+
+    // Leer el IR optimizado si se generó correctamente
+    let display_ir = if let Ok(ref out) = opt_result {
+        if out.status.success() {
+            std::fs::read_to_string(&optimized_ll_path).unwrap_or(llvm_code.clone())
+        } else {
+            llvm_code.clone()
+        }
+    } else {
+        llvm_code.clone()
+    };
+
+    // 8) Compilar a binario ejecutable
     let clang = Command::new("clang")
         .args([
+            "-O3",                          // Máxima optimización
+            "-march=native",                // Optimizar para la CPU actual
             "-o",
             bin_path.to_str().unwrap(),
             ll_path.to_str().unwrap(),
@@ -111,7 +140,7 @@ fn compile_and_run(code: &str) -> RunResponse {
                     "❌ Error de clang:\n{}",
                     String::from_utf8_lossy(&out.stderr)
                 ),
-                llvm_ir: llvm_code,
+                llvm_ir: display_ir.clone(),
                 time_ms: start.elapsed().as_millis() as u64,
             };
         }
@@ -120,14 +149,14 @@ fn compile_and_run(code: &str) -> RunResponse {
                 success: false,
                 output: String::new(),
                 errors: format!("No se encontró clang: {}", e),
-                llvm_ir: llvm_code,
+                llvm_ir: display_ir.clone(),
                 time_ms: start.elapsed().as_millis() as u64,
             };
         }
         _ => {}
     }
 
-    // 8) Ejecutar con timeout de 10 segundos
+    // 9) Ejecutar con timeout de 10 segundos
     let bin_str = bin_path.to_str().unwrap().to_string();
     let (tx, rx) = std::sync::mpsc::channel();
 
@@ -148,7 +177,7 @@ fn compile_and_run(code: &str) -> RunResponse {
                 } else {
                     stderr
                 },
-                llvm_ir: llvm_code,
+                llvm_ir: display_ir.clone(),
                 time_ms: start.elapsed().as_millis() as u64,
             }
         }
@@ -156,14 +185,14 @@ fn compile_and_run(code: &str) -> RunResponse {
             success: false,
             output: String::new(),
             errors: format!("Error de ejecución: {}", e),
-            llvm_ir: llvm_code,
+            llvm_ir: display_ir.clone(),
             time_ms: start.elapsed().as_millis() as u64,
         },
         Err(_) => RunResponse {
             success: false,
             output: String::new(),
             errors: "⏱️ Timeout: la ejecución excedió 10 segundos.\n💡 Verifica que no tienes un bucle infinito.".to_string(),
-            llvm_ir: llvm_code,
+            llvm_ir: display_ir,
             time_ms: start.elapsed().as_millis() as u64,
         },
     }
