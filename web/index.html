@@ -682,154 +682,822 @@
         </div>
         
         <div class="docs-container">
-            <h2>💚 HULK Language</h2>
+            <h2>HULK Language Reference</h2>
             <p><strong>H</strong>avana <strong>U</strong>niversity <strong>L</strong>anguage for <strong>K</strong>ompilers</p>
-            <p>Un lenguaje de expresiones con tipos estáticos, herencia, protocolos, funciones de orden superior e iterables.</p>
+            <p>HULK es un lenguaje de programación fuertemente tipado con inferencia de tipos, semántica de expresiones, programación funcional, y programación orientada a objetos con herencia y protocolos. El lenguaje compila directamente a LLVM IR para generación eficiente de código nativo.</p>
 
             <div class="tip">
-                <strong>💡 Estructura de un Programa</strong><br>
-                Un programa HULK tiene dos partes:<br>
-                • <b>Declaraciones</b> (top-level): <code>function</code>, <code>type</code>, <code>protocol</code><br>
-                • <b>Expresión principal</b>: código a ejecutar entre <code>{ }</code>
+                <strong>Arquitectura del Programa</strong><br>
+                Todo programa HULK se divide en dos secciones fundamentales:<br>
+                1. <b>Declaraciones Top-Level</b>: Definiciones de <code>function</code>, <code>type</code> y <code>protocol</code> que son visibles globalmente<br>
+                2. <b>Expresión de Ejecución</b>: Código principal entre llaves <code>{ }</code> que se evalúa al ejecutar el programa<br><br>
+                Las declaraciones se procesan primero y están disponibles en toda la expresión principal. No es necesario declarar antes de usar.
             </div>
 
-            <h3>Ejemplo Básico</h3>
-            <pre><code>// Declaraciones arriba
-function doble(x) => x * 2;
+            <h3>Ejemplo de Estructura Completa</h3>
+            <pre><code>// Sección de declaraciones (scope global)
+function fibonacci(n) => 
+    if (n <= 1) n
+    else fibonacci(n-1) + fibonacci(n-2);
 
-// Código ejecutable en { }
+type Punto(x: Number, y: Number) {
+    x = x;
+    y = y;
+    distancia() => sqrt(x**2 + y**2);
+}
+
+// Expresión principal (código a ejecutar)
 {
-    print(doble(21));
+    print("Fibonacci de 10:");
+    print(fibonacci(10));
+    
+    let p = new Punto(3, 4) in
+        print("Distancia al origen: " @@ p.distancia());
 }</code></pre>
 
-            <h2>📦 Variables y Let-In</h2>
-            <pre><code>let x = 10, y = 20 in
-    print(x + y);
-
-let pi = 3.14159 in
-let r = 5 in
-    print(pi * r ** 2);</code></pre>
+            <h2>Sistema de Variables y Let-In</h2>
             
-            <div class="tip"><strong>Tip:</strong> Las variables en <code>let</code> son inmutables. Para cambiar valores usa <code>:=</code> en variables declaradas como argumentos de función o parámetros de tipo.</div>
+            <h3>Inmutabilidad por Defecto</h3>
+            <p>HULK adopta inmutabilidad por defecto para prevenir efectos secundarios no deseados. Las variables declaradas con <code>let...in</code> son constantes dentro de su scope:</p>
+            <pre><code>let x = 10, y = 20 in
+    print(x + y); // 30
 
-            <h2>⚡ Funciones</h2>
-            <h3>Sintaxis</h3>
-            <pre><code>// Inline
+// Scope anidado
+let pi = 3.14159 in
+let radio = 5 in
+let area = pi * radio ** 2 in
+    print("Area del círculo: " @@ area);</code></pre>
+
+            <h3>Variables Mutables con Asignación Destructiva</h3>
+            <p>Cuando se requiere mutabilidad, se declara usando el operador <code>:=</code> en lugar de <code>=</code>. Posteriormente, la variable puede ser reasignada usando también <code>:=</code>:</p>
+            <pre><code>let contador := 0 in {
+    print(contador);       // 0
+    contador := contador + 1;
+    print(contador);       // 1
+    contador := contador * 10;
+    print(contador);       // 10
+}</code></pre>
+
+            <h3>Alcance y Shadowing</h3>
+            <p>Las variables tienen alcance léxico. Las declaraciones internas pueden hacer shadow de las externas:</p>
+            <pre><code>let x = 10 in {
+    print(x);           // 10
+    let x = 20 in {
+        print(x);       // 20 (shadow)
+    };
+    print(x);           // 10 (restaurado)
+}</code></pre>
+
+            <div class="tip">
+                <strong>Restricciones de Mutabilidad:</strong> Solo pueden ser mutables:<br>
+                • Variables declaradas con <code>let := </code><br>
+                • Atributos de tipos declarados con <code>=</code> seguido de <code>:=</code> para reasignación<br>
+                Los parámetros de función son siempre inmutables por diseño.
+            </div>
+
+            <h2>Funciones como Ciudadanos de Primera Clase</h2>
+            
+            <h3>Declaración y Tipos</h3>
+            <p>Las funciones en HULK son expresiones de primera clase. Pueden ser pasadas como argumentos, retornadas desde otras funciones, y almacenadas en variables. Soportan inferencia de tipos o declaración explícita:</p>
+            <pre><code>// Sintaxis inline simple
 function suma(a, b) => a + b;
 
-// Con cuerpo
-function factorial(n) => 
+// Con anotaciones de tipo
+function potencia(base: Number, exp: Number): Number =>
+    if (exp == 0) 1
+    else base * potencia(base, exp - 1);
+
+// Función con cuerpo de bloque
+function estadisticas(valores) => {
+    let suma = calcularSuma(valores) in
+    let promedio = suma / longitud(valores) in
+    let varianza = calcularVarianza(valores, promedio) in
+        new Estadisticas(promedio, varianza);
+};</code></pre>
+
+            <h3>Recursión y Tail-Call</h3>
+            <p>HULK soporta recursión completa. Para funciones recursivas críticas, considere reescribir en forma tail-recursive cuando sea posible:</p>
+            <pre><code>// Recursión estándar (puede causar stack overflow)
+function factorial(n) =>
     if (n <= 1) 1
     else n * factorial(n - 1);
 
-// Con tipos explícitos
-function area(r: Number): Number => 
-    3.14159 * r ** 2;</code></pre>
+// Tail recursion con acumulador (optimizable)
+function factorial_tail(n, acc) =>
+    if (n <= 1) acc
+    else factorial_tail(n - 1, n * acc);
+
+function factorial(n) => factorial_tail(n, 1);</code></pre>
 
             <h3>Funciones de Orden Superior</h3>
-            <pre><code>function aplicar(f, x) => f(x);
+            <p>Las funciones pueden aceptar otras funciones como parámetros y retornar nuevas funciones, permitiendo abstracciones poderosas:</p>
+            <pre><code>// Función que aplica una función a un valor
+function aplicar(f, x) => f(x);
+
+// Funciones que pueden ser pasadas
 function cuadrado(x) => x * x;
+function cubo(x) => x * x * x;
+function duplicar(x) => x * 2;
+function incrementar(x) => x + 1;
 
 {
-    print(aplicar(cuadrado, 5));
-    // Imprime: 25
+    print(aplicar(cuadrado, 5));     // 25
+    print(aplicar(cubo, 3));         // 27
+    print(aplicar(duplicar, 8));     // 16
+}
+
+// Composición de funciones: (f ∘ g)(x) = f(g(x))
+function componer(f, g) =>
+    function(x) => f(g(x));
+
+{
+    let f = componer(cuadrado, incrementar) in
+        print(f(4));  // (4+1)^2 = 25
+        
+    let g = componer(incrementar, cuadrado) in
+        print(g(4));  // (4^2)+1 = 17
 }</code></pre>
 
-            <h2>🔀 Condicionales</h2>
-            <pre><code>if (x > 0) "positivo"
-elif (x < 0) "negativo"
-else "cero"</code></pre>
+            <h3>Currying y Aplicación Parcial</h3>
+            <pre><code>// Función que retorna otra función
+function multiplicador(factor) =>
+    function(x) => x * factor;
 
-            <div class="warning"><strong>⚠️</strong> Todas las ramas deben retornar valores del mismo tipo.</div>
+{
+    let duplicar = multiplicador(2) in
+    let triplicar = multiplicador(3) in {
+        print(duplicar(5));   // 10
+        print(triplicar(5));  // 15
+    };
+}
 
-            <h2>🔄 Ciclos</h2>
-            <h3>While</h3>
-            <pre><code>{
-    let x := 0 in
-    while (x < 10) {
-        print(x);
-        x := x + 1;
+// Currying manual
+function suma_currificada(a) =>
+    function(b) =>
+        function(c) => a + b + c;
+
+{
+    print(suma_currificada(1)(2)(3)); // 6
+}</code></pre>
+
+            <h3>Closures y Captura de Entorno</h3>
+            <p>Las funciones capturan el entorno léxico donde fueron definidas, permitiendo implementar estado encapsulado:</p>
+            <pre><code>// Generador de contadores con estado privado
+function crearContador(inicial) => {
+    let valor := inicial in
+    new Contador(
+        function() => {
+            valor := valor + 1;
+            valor
+        },
+        function() => valor,
+        function() => { valor := inicial; }
+    );
+};
+
+type Contador(inc, get, reset) {
+    incrementar = inc;
+    obtener = get;
+    resetear = reset;
+}
+
+{
+    let c1 = crearContador(0) in
+    let c2 = crearContador(100) in {
+        print(c1.incrementar()); // 1
+        print(c1.incrementar()); // 2
+        print(c2.incrementar()); // 101
+        print(c1.obtener());     // 2
+        c1.resetear();
+        print(c1.obtener());     // 0
     };
 }</code></pre>
 
-            <h3>For (con Iterables)</h3>
-            <pre><code>type Range(start, end) {
-    start = start;
-    end = end;
-    current := start;
+            <h2>Estructuras de Control</h2>
+            
+            <h3>Expresiones Condicionales</h3>
+            <p>En HULK, <code>if</code> no es una sentencia sino una expresión que retorna un valor. Todas las ramas deben tener el mismo tipo de retorno:</p>
+            <pre><code>// Condicional simple
+let signo = if (x > 0) "positivo"
+            elif (x < 0) "negativo"
+            else "cero";
+
+// Condicionales anidados
+let categoria = 
+    if (edad < 2) "bebé"
+    elif (edad < 13) "niño"
+    elif (edad < 18) "adolescente"
+    elif (edad < 65) "adulto"
+    else "adulto mayor";
+
+// Asignación condicional compleja
+let descuento = 
+    if (esEstudiante & esLunes) 0.30
+    elif (esEstudiante) 0.15
+    elif (esMayorDe60) 0.20
+    else 0.0;</code></pre>
+
+            <div class="warning">
+                <strong>Restricción de Tipos:</strong> El sistema de tipos garantiza que todas las ramas de un condicional retornen el mismo tipo. Intentar retornar tipos incompatibles (ej: Number en una rama y String en otra) resultará en un error de compilación.
+            </div>
+
+            <h3>Operadores Lógicos con Cortocircuito</h3>
+            <p>Los operadores lógicos implementan evaluación de cortocircuito (short-circuit evaluation) para eficiencia:</p>
+            <table>
+                <tr><th>Operador</th><th>Descripción</th><th>Comportamiento</th><th>Ejemplo</th></tr>
+                <tr><td><code>&</code></td><td>AND lógico</td><td>Si el primer operando es falso, no evalúa el segundo</td><td><code>x != 0 & y/x > 1</code></td></tr>
+                <tr><td><code>|</code></td><td>OR lógico</td><td>Si el primer operando es verdadero, no evalúa el segundo</td><td><code>x == 0 | y == 0</code></td></tr>
+                <tr><td><code>!</code></td><td>NOT lógico</td><td>Niega el valor booleano</td><td><code>!esPrimo(n)</code></td></tr>
+            </table>
+
+            <pre><code>// Uso del cortocircuito para evitar errores
+function division_segura(a, b) =>
+    if (b != 0 & a/b > 10) "grande"
+    elif (b != 0 & a/b > 0) "positivo"
+    else "otro";
+
+// Expresiones complejas
+let valido = 
+    (edad >= 18 & edad <= 65) & 
+    (tieneDocumento | esExtranjero) &
+    !estaBloqueado;</code></pre>
+
+            <h2>Iteración y Ciclos</h2>
+            
+            <h3>While Loop</h3>
+            <p>El ciclo <code>while</code> ejecuta mientras la condición sea verdadera. Requiere variables mutables para el control:</p>
+            <pre><code>// Suma de números del 1 al n
+function sumaHastaN(n) => {
+    let suma := 0 in
+    let i := 1 in {
+        while (i <= n) {
+            suma := suma + i;
+            i := i + 1;
+        };
+        suma
+    };
+};
+
+// Búsqueda secuencial
+function buscar(arr, target) => {
+    let i := 0 in
+    let encontrado := false in {
+        while (i < arr.length() & !encontrado) {
+            if (arr.get(i) == target)
+                encontrado := true
+            else
+                i := i + 1;
+        };
+        if (encontrado) i else -1
+    };
+};</code></pre>
+
+            <h3>For Loop con Protocolo Iterable</h3>
+            <p>El ciclo <code>for...in</code> opera sobre cualquier objeto que implemente el protocolo de iteración, el cual requiere dos métodos:</p>
+            <ul>
+                <li><code>next(): Boolean</code> - Avanza el iterador y retorna <code>true</code> si hay más elementos</li>
+                <li><code>get_current()</code> - Retorna el elemento actual sin avanzar</li>
+            </ul>
+
+            <pre><code>// Implementación de Range iterable
+type Range(inicio, fin, paso) {
+    inicio = inicio;
+    fin = fin;
+    paso = paso;
+    actual := inicio;
+    
     next() => {
-        let c = current in {
-            current := current + 1;
-            c
+        let temp = actual in {
+            actual := actual + paso;
+            temp < fin
         };
     };
+    
+    get_current() => actual;
 }
+
+// Constructor auxiliar con paso por defecto
+function range(inicio, fin) =>
+    new Range(inicio, fin, 1);
 
 {
-    for (x in new Range(1, 6))
-        print(x);
-}</code></pre>
-
-            <h2>🏗️ Tipos y Herencia</h2>
-            <h3>Declaración</h3>
-            <pre><code>type Persona(nombre: String, edad: Number) {
-    nombre = nombre;
-    edad = edad;
-    saludar() => print("Hola, soy " @@ nombre);
+    // Iteración básica
+    for (i in range(0, 10))
+        print(i);
+    
+    // Con paso personalizado
+    for (x in new Range(0, 100, 10))
+        print(x); // 0, 10, 20, ..., 90
 }
 
-type Estudiante(n, e, carrera) 
-    inherits Persona(n, e) {
-    carrera = carrera;
-    estudiar() => 
-        print(nombre @@ " estudia " @@ carrera);
+// Lista enlazada iterable
+type Nodo(valor, siguiente) {
+    valor = valor;
+    siguiente = siguiente;
+    actual := self;
+    
+    next() => {
+        if (actual == null) false
+        else {
+            let sig = actual.siguiente in {
+                actual := sig;
+                sig != null
+            };
+        };
+    };
+    
+    get_current() => 
+        if (actual != null) actual.valor 
+        else null;
 }</code></pre>
 
-            <h3>Uso</h3>
-            <pre><code>{
-    let p = new Persona("Ana", 25) in {
-        p.saludar();
-        print(p.edad);
+            <h2>Programación Orientada a Objetos</h2>
+            
+            <h3>Definición de Tipos</h3>
+            <p>Los tipos en HULK encapsulan datos y comportamiento. La sintaxis del constructor especifica parámetros que pueden inicializar atributos:</p>
+            <pre><code>type Persona(nombre: String, edad: Number, email: String) {
+    // Atributos inmutables
+    nombre = nombre;
+    email = email;
+    
+    // Atributo mutable
+    edad := edad;
+    
+    // Métodos de instancia
+    saludar() => 
+        print("Hola, mi nombre es " @@ nombre);
+    
+    cumplirAnios() => {
+        edad := edad + 1;
+        print(nombre @@ " ahora tiene " @@ edad @@ " años");
+    };
+    
+    cambiarEmail(nuevoEmail) =>
+        new Persona(nombre, edad, nuevoEmail);
+    
+    info(): String =>
+        nombre @@ " (" @@ edad @@ " años) - " @@ email;
+}</code></pre>
+
+            <h3>Herencia y Polimorfismo</h3>
+            <p>HULK soporta herencia simple con la palabra clave <code>inherits</code>. Los tipos derivados heredan atributos y métodos, y pueden sobrescribirlos:</p>
+            <pre><code>type Animal(nombre: String, especie: String) {
+    nombre = nombre;
+    especie = especie;
+    energia := 100;
+    
+    hacer_sonido(): String => "...";
+    
+    comer() => {
+        energia := energia + 20;
+        print(nombre @@ " ha comido. Energía: " @@ energia);
+    };
+    
+    moverse() => {
+        energia := energia - 10;
+        print(nombre @@ " se ha movido. Energía: " @@ energia);
+    };
+    
+    info() => nombre @@ " es un " @@ especie;
+}
+
+type Perro(nombre: String, raza: String) 
+    inherits Animal(nombre, "Canis familiaris") {
+    
+    raza = raza;
+    
+    // Override del método hacer_sonido
+    hacer_sonido() => "¡Guau guau!";
+    
+    // Método específico de Perro
+    mover_cola() => 
+        print(nombre @@ " mueve la cola alegremente");
+    
+    // Override con llamada a base
+    info() => base() @@ " de raza " @@ raza;
+}
+
+type Gato(nombre: String, color: String) 
+    inherits Animal(nombre, "Felis catus") {
+    
+    color = color;
+    
+    hacer_sonido() => "¡Miau!";
+    
+    ronronear() =>
+        print(nombre @@ " ronronea suavemente");
+    
+    info() => base() @@ " de color " @@ color;
+}</code></pre>
+
+            <h3>Método base() para Llamadas al Padre</h3>
+            <p>El método especial <code>base()</code> permite invocar la implementación de un método en la clase padre:</p>
+            <pre><code>type Vehiculo(marca: String) {
+    marca = marca;
+    velocidad := 0;
+    
+    acelerar() => {
+        velocidad := velocidad + 10;
+        print("Acelerando...");
+    };
+    
+    descripcion() => "Vehículo marca " @@ marca;
+}
+
+type Automovil(marca: String, modelo: String, anio: Number) 
+    inherits Vehiculo(marca) {
+    
+    modelo = modelo;
+    anio = anio;
+    
+    // Override que extiende funcionalidad
+    acelerar() => {
+        base();  // Llama a Vehiculo.acelerar()
+        if (velocidad > 100)
+            print("¡Precaución! Alta velocidad");
+    };
+    
+    // Override que extiende descripción
+    descripcion() =>
+        base() @@ ", modelo " @@ modelo @@ " (" @@ anio @@ ")";
+}</code></pre>
+
+            <h3>Type Checking y Casting</h3>
+            <p>Los operadores <code>is</code> y <code>as</code> permiten verificación de tipos en tiempo de ejecución y conversión segura:</p>
+            <pre><code>function procesar_animal(animal: Animal) => {
+    print("Procesando: " @@ animal.info());
+    print("Sonido: " @@ animal.hacer_sonido());
+    
+    // Type checking con is
+    if (animal is Perro) {
+        // Safe cast con as
+        let perro = animal as Perro in {
+            print("Es un perro de raza " @@ perro.raza);
+            perro.mover_cola();
+        };
+    };
+    
+    if (animal is Gato) {
+        let gato = animal as Gato in {
+            print("Es un gato de color " @@ gato.color);
+            gato.ronronear();
+        };
+    };
+};
+
+{
+    let max = new Perro("Max", "Golden Retriever") in
+    let luna = new Gato("Luna", "Negro") in {
+        procesar_animal(max);
+        procesar_animal(luna);
     };
 }</code></pre>
 
-            <h2>📝 Operadores</h2>
-            <table>
-                <tr><th>Operador</th><th>Descripción</th><th>Ejemplo</th></tr>
-                <tr><td><code>+</code> <code>-</code> <code>*</code> <code>/</code></td><td>Aritméticos</td><td><code>2 + 3 * 4</code></td></tr>
-                <tr><td><code>**</code></td><td>Potencia</td><td><code>2 ** 8</code> → 256</td></tr>
-                <tr><td><code>%</code></td><td>Módulo</td><td><code>10 % 3</code> → 1</td></tr>
-                <tr><td><code>==</code> <code>!=</code></td><td>Igualdad</td><td><code>x == 5</code></td></tr>
-                <tr><td><code>&lt;</code> <code>&gt;</code> <code>&lt;=</code> <code>&gt;=</code></td><td>Comparación</td><td><code>x &lt; 10</code></td></tr>
-                <tr><td><code>&</code> <code>|</code> <code>!</code></td><td>Lógicos</td><td><code>a & b</code></td></tr>
-                <tr><td><code>@@</code></td><td>Concatenación</td><td><code>"Hola" @@ " Mundo"</code></td></tr>
-                <tr><td><code>@</code></td><td>String con espacios</td><td><code>"A" @ "B"</code> → "A B"</td></tr>
-                <tr><td><code>:=</code></td><td>Asignación destructiva</td><td><code>x := x + 1</code></td></tr>
-                <tr><td><code>=></code></td><td>Define función/método</td><td><code>f(x) => x*2</code></td></tr>
-            </table>
-
-            <h2>🎯 Protocolos</h2>
-            <pre><code>protocol Drawable {
-    draw(): String;
+            <h2>Protocolos e Interfaces</h2>
+            <p>Los protocolos definen contratos que los tipos deben cumplir, permitiendo polimorfismo sin herencia:</p>
+            <pre><code>protocol Comparable {
+    comparar(otro): Number;  // < 0 si menor, 0 si igual, > 0 si mayor
 }
 
-type Circle(r) extends Drawable {
-    radio = r;
-    draw() => "⭕ Radio: " @@ radio;
-}</code></pre>
+protocol Serializable {
+    serializar(): String;
+    deserializar(datos: String);
+}
 
-            <h2>🔧 Built-ins</h2>
+protocol Drawable {
+    dibujar(): String;
+    area(): Number;
+    perimetro(): Number;
+}
+
+// Tipo que implementa múltiples protocolos
+type Circulo(radio: Number) 
+    extends Drawable, Comparable {
+    
+    radio = radio;
+    
+    // Implementación de Drawable
+    dibujar() => "Círculo de radio " @@ radio;
+    area() => 3.14159265359 * radio ** 2;
+    perimetro() => 2 * 3.14159265359 * radio;
+    
+    // Implementación de Comparable
+    comparar(otro) =>
+        if (otro is Circulo) {
+            let otroCirculo = otro as Circulo in
+                area() - otroCirculo.area();
+        } else 0;
+}
+
+type Rectangulo(base: Number, altura: Number)
+    extends Drawable, Comparable {
+    
+    base = base;
+    altura = altura;
+    
+    dibujar() => "Rectángulo " @@ base @@ "x" @@ altura;
+    area() => base * altura;
+    perimetro() => 2 * (base + altura);
+    
+    comparar(otro) =>
+        if (otro is Rectangulo) {
+            let otroRect = otro as Rectangulo in
+                area() - otroRect.area();
+        } else 0;
+}
+
+// Función genérica que opera sobre cualquier Drawable
+function describir_figura(fig: Drawable) => {
+    print(fig.dibujar());
+    print("Área: " @@ fig.area());
+    print("Perímetro: " @@ fig.perimetro());
+};</code></pre>
+
+            <h2>Sistema de Operadores</h2>
+            
+            <h3>Operadores Aritméticos</h3>
             <table>
-                <tr><th>Función</th><th>Descripción</th></tr>
-                <tr><td><code>print(x)</code></td><td>Imprime en consola</td></tr>
-                <tr><td><code>sqrt(x)</code></td><td>Raíz cuadrada</td></tr>
-                <tr><td><code>sin(x)</code>, <code>cos(x)</code></td><td>Trigonométricas</td></tr>
-                <tr><td><code>exp(x)</code>, <code>log(x)</code></td><td>Exponencial/logaritmo</td></tr>
-                <tr><td><code>rand()</code></td><td>Número aleatorio [0,1)</td></tr>
+                <tr><th>Operador</th><th>Descripción</th><th>Precedencia</th><th>Ejemplo</th><th>Resultado</th></tr>
+                <tr><td><code>**</code></td><td>Potenciación</td><td>Más alta</td><td><code>2 ** 3 ** 2</code></td><td>512 (asociatividad derecha)</td></tr>
+                <tr><td><code>*</code></td><td>Multiplicación</td><td>Alta</td><td><code>3 * 4</code></td><td>12</td></tr>
+                <tr><td><code>/</code></td><td>División (real)</td><td>Alta</td><td><code>7 / 2</code></td><td>3.5</td></tr>
+                <tr><td><code>%</code></td><td>Módulo</td><td>Alta</td><td><code>17 % 5</code></td><td>2</td></tr>
+                <tr><td><code>+</code></td><td>Suma</td><td>Media</td><td><code>10 + 5</code></td><td>15</td></tr>
+                <tr><td><code>-</code></td><td>Resta</td><td>Media</td><td><code>10 - 3</code></td><td>7</td></tr>
             </table>
 
+            <h3>Operadores de String</h3>
+            <table>
+                <tr><th>Operador</th><th>Descripción</th><th>Ejemplo</th><th>Resultado</th></tr>
+                <tr><td><code>@@</code></td><td>Concatenación directa sin separación</td><td><code>"Hola" @@ "Mundo"</code></td><td>"HolaMundo"</td></tr>
+                <tr><td><code>@</code></td><td>Concatenación con espacio automático</td><td><code>"Hola" @ "Mundo"</code></td><td>"Hola Mundo"</td></tr>
+            </table>
+
+            <p>Conversión automática a string: Todos los tipos tienen una representación en string implícita.</p>
+            <pre><code>let x = 42, y = 3.14 in {
+    print("El número es " @@ x);           // "El número es 42"
+    print("Pi vale aproximadamente" @ y);  // "Pi vale aproximadamente 3.14"
+}</code></pre>
+
+            <h3>Operadores de Comparación</h3>
+            <table>
+                <tr><th>Operador</th><th>Descripción</th><th>Tipos Soportados</th><th>Retorna</th></tr>
+                <tr><td><code>==</code></td><td>Igualdad por valor</td><td>Number, String, Boolean</td><td>Boolean</td></tr>
+                <tr><td><code>!=</code></td><td>Desigualdad</td><td>Number, String, Boolean</td><td>Boolean</td></tr>
+                <tr><td><code>&lt;</code></td><td>Menor que</td><td>Number, String (lexicográfico)</td><td>Boolean</td></tr>
+                <tr><td><code>&gt;</code></td><td>Mayor que</td><td>Number, String (lexicográfico)</td><td>Boolean</td></tr>
+                <tr><td><code>&lt;=</code></td><td>Menor o igual</td><td>Number, String</td><td>Boolean</td></tr>
+                <tr><td><code>&gt;=</code></td><td>Mayor o igual</td><td>Number, String</td><td>Boolean</td></tr>
+            </table>
+
+            <h3>Precedencia y Asociatividad</h3>
+            <pre><code>// Precedencia de operadores (de mayor a menor)
+2 + 3 * 4       // 14 (no 20)
+2 ** 3 ** 2     // 512 (** es asociativo a derecha: 2**(3**2))
+10 - 5 - 2      // 3 (-, +, *, / son asociativos a izquierda)
+x > 5 & y < 10  // primero comparaciones, luego AND lógico</code></pre>
+
+            <h2>Biblioteca Estándar Built-in</h2>
+            
+            <h3>Funciones Matemáticas</h3>
+            <table>
+                <tr><th>Función</th><th>Descripción</th><th>Dominio</th><th>Ejemplo</th><th>Resultado</th></tr>
+                <tr><td><code>sqrt(x)</code></td><td>Raíz cuadrada</td><td>x ≥ 0</td><td><code>sqrt(16)</code></td><td>4.0</td></tr>
+                <tr><td><code>sin(x)</code></td><td>Seno (radianes)</td><td>ℝ</td><td><code>sin(3.14159/2)</code></td><td>~1.0</td></tr>
+                <tr><td><code>cos(x)</code></td><td>Coseno (radianes)</td><td>ℝ</td><td><code>cos(0)</code></td><td>1.0</td></tr>
+                <tr><td><code>exp(x)</code></td><td>Exponencial (e^x)</td><td>ℝ</td><td><code>exp(1)</code></td><td>2.71828...</td></tr>
+                <tr><td><code>log(x)</code></td><td>Logaritmo natural</td><td>x > 0</td><td><code>log(2.71828)</code></td><td>~1.0</td></tr>
+                <tr><td><code>rand()</code></td><td>Número aleatorio</td><td>[0, 1)</td><td><code>rand()</code></td><td>0.73584...</td></tr>
+            </table>
+
+            <h3>Entrada/Salida</h3>
+            <table>
+                <tr><th>Función</th><th>Descripción</th><th>Uso</th></tr>
+                <tr><td><code>print(x)</code></td><td>Imprime valor en stdout con newline</td><td><code>print("Hello, World!")</code></td></tr>
+            </table>
+
+            <h2>Patrones de Diseño Comunes</h2>
+
+            <h3>Map y Filter Funcional</h3>
+            <p>Implementación de operaciones funcionales sobre estructuras de datos:</p>
+            <pre><code>// Definición de lista enlazada
+type Lista(valor, siguiente) {
+    valor = valor;
+    siguiente = siguiente;
+    
+    vacia() => false;
+}
+
+type ListaVacia() {
+    vacia() => true;
+}
+
+// Map: aplica función a cada elemento
+function map(f, lista) =>
+    if (lista.vacia()) new ListaVacia()
+    else new Lista(
+        f(lista.valor),
+        map(f, lista.siguiente)
+    );
+
+// Filter: retiene elementos que cumplen predicado
+function filter(pred, lista) =>
+    if (lista.vacia()) new ListaVacia()
+    elif (pred(lista.valor))
+        new Lista(lista.valor, filter(pred, lista.siguiente))
+    else filter(pred, lista.siguiente);
+
+// Fold (reduce): acumula valores
+function fold(f, acc, lista) =>
+    if (lista.vacia()) acc
+    else fold(f, f(acc, lista.valor), lista.siguiente);
+
+// Ejemplo de uso
+{
+    let nums = new Lista(1, new Lista(2, new Lista(3, new ListaVacia()))) in
+    let cuadrados = map(function(x) => x * x, nums) in
+    let pares = filter(function(x) => x % 2 == 0, nums) in
+    let suma = fold(function(a, b) => a + b, 0, nums) in {
+        // cuadrados: [1, 4, 9]
+        // pares: [2]
+        // suma: 6
+    };
+}</code></pre>
+
+            <h3>Pattern Matching Simulado</h3>
+            <p>Implementación de pattern matching estilo ML/Haskell usando type checking:</p>
+            <pre><code>// AST para expresiones aritméticas
+type Numero(valor) { valor = valor; }
+type Suma(izq, der) { izq = izq; der = der; }
+type Resta(izq, der) { izq = izq; der = der; }
+type Mult(izq, der) { izq = izq; der = der; }
+type Div(izq, der) { izq = izq; der = der; }
+
+// Evaluador recursivo con pattern matching
+function evaluar(expr) =>
+    if (expr is Numero) 
+        (expr as Numero).valor
+    elif (expr is Suma) {
+        let e = expr as Suma in
+            evaluar(e.izq) + evaluar(e.der);
+    }
+    elif (expr is Resta) {
+        let e = expr as Resta in
+            evaluar(e.izq) - evaluar(e.der);
+    }
+    elif (expr is Mult) {
+        let e = expr as Mult in
+            evaluar(e.izq) * evaluar(e.der);
+    }
+    elif (expr is Div) {
+        let e = expr as Div in
+            evaluar(e.izq) / evaluar(e.der);
+    }
+    else 0;
+
+// Ejemplo: (3 + 5) * (10 - 2)
+{
+    let expr = new Mult(
+        new Suma(new Numero(3), new Numero(5)),
+        new Resta(new Numero(10), new Numero(2))
+    ) in
+        print(evaluar(expr)); // 64
+}</code></pre>
+
+            <h3>Builder Pattern para Configuración</h3>
+            <pre><code>// Builder para construcción fluida de objetos
+type ConfigBuilder() {
+    host := "localhost";
+    port := 8080;
+    timeout := 30;
+    debug := false;
+    logLevel := "INFO";
+    
+    setHost(h) => { host := h; self; };
+    setPort(p) => { port := p; self; };
+    setTimeout(t) => { timeout := t; self; };
+    enableDebug() => { debug := true; self; };
+    setLogLevel(level) => { logLevel := level; self; };
+    
+    build() => new Config(host, port, timeout, debug, logLevel);
+}
+
+type Config(host, port, timeout, debug, logLevel) {
+    host = host;
+    port = port;
+    timeout = timeout;
+    debug = debug;
+    logLevel = logLevel;
+    
+    toString() =>
+        "Config{host=" @@ host @@ 
+        ", port=" @@ port @@ 
+        ", timeout=" @@ timeout @@ 
+        ", debug=" @@ debug @@ 
+        ", logLevel=" @@ logLevel @@ "}";
+}
+
+// Uso
+{
+    let config = new ConfigBuilder()
+        .setHost("api.example.com")
+        .setPort(443)
+        .setTimeout(60)
+        .enableDebug()
+        .setLogLevel("DEBUG")
+        .build() in
+        print(config.toString());
+}</code></pre>
+
+            <h3>Visitor Pattern para Recorrido de Árboles</h3>
+            <pre><code>protocol Visitor {
+    visitNumero(n);
+    visitOperacion(op);
+}
+
+type PrintVisitor() extends Visitor {
+    visitNumero(n) => print("Número: " @@ n.valor);
+    visitOperacion(op) => {
+        print("Operación: " @@ op.operador);
+        op.izquierdo.accept(self);
+        op.derecho.accept(self);
+    };
+}</code></pre>
+
+            <h2>Optimizaciones del Compilador</h2>
+            <p>El compilador HULK implementa un pipeline de optimización multinivel:</p>
+
+            <h3>Optimizaciones en AST (Pre-LLVM)</h3>
+            <ul>
+                <li><strong>Constant Folding:</strong> Evaluación de expresiones constantes en tiempo de compilación
+                    <pre><code>2 + 3 * 4  →  14
+"Hello" @@ " " @@ "World"  →  "Hello World"</code></pre>
+                </li>
+                <li><strong>Constant Propagation:</strong> Propagación de valores constantes conocidos
+                    <pre><code>let x = 10 in x * 2  →  20</code></pre>
+                </li>
+                <li><strong>Dead Code Elimination:</strong> Eliminación de código inalcanzable
+                    <pre><code>if (true) A else B  →  A
+if (false) A else B  →  B</code></pre>
+                </li>
+                <li><strong>Algebraic Simplification:</strong> Simplificaciones algebraicas
+                    <pre><code>x * 1  →  x
+x + 0  →  x
+x * 0  →  0
+x ** 1  →  x</code></pre>
+                </li>
+                <li><strong>Boolean Short-Circuit:</strong> Optimización de expresiones booleanas
+                    <pre><code>false & expr  →  false
+true | expr   →  true</code></pre>
+                </li>
+                <li><strong>String Interning:</strong> Reutilización de literales de string idénticos</li>
+            </ul>
+
+            <h3>Optimizaciones LLVM</h3>
+            <p>Después de generar LLVM IR, se aplican optimizaciones adicionales:</p>
+            <ul>
+                <li>Inlining de funciones pequeñas</li>
+                <li>Loop unrolling y vectorización</li>
+                <li>Register allocation optimizado</li>
+                <li>Dead store elimination</li>
+                <li>Common subexpression elimination (CSE)</li>
+                <li>Tail call optimization</li>
+            </ul>
+
+            <h2>Compilación a LLVM IR</h2>
+            <p>HULK utiliza LLVM (Low Level Virtual Machine) como backend de compilación, proporcionando:</p>
+
+            <h3>Ventajas de LLVM</h3>
+            <ul>
+                <li><strong>Portabilidad:</strong> Generación de código nativo para x86, x86-64, ARM, WebAssembly, etc.</li>
+                <li><strong>Optimizaciones Avanzadas:</strong> Décadas de investigación en optimización de compiladores</li>
+                <li><strong>Interoperabilidad:</strong> Compatibilidad ABI con C/C++ para integración con bibliotecas existentes</li>
+                <li><strong>Performance:</strong> Código generado comparable a C/C++ en la mayoría de casos</li>
+                <li><strong>Tooling:</strong> Acceso a herramientas LLVM (llvm-dis, opt, llc, etc.)</li>
+            </ul>
+
+            <h3>Pipeline de Compilación</h3>
+            <ol>
+                <li><strong>Parsing:</strong> Código HULK → AST (Abstract Syntax Tree)</li>
+                <li><strong>Macro Expansion:</strong> Expansión de macros si existen</li>
+                <li><strong>Semantic Analysis:</strong> Type checking, scope resolution, validación de protocolos</li>
+                <li><strong>Optimization Pass:</strong> Optimizaciones a nivel AST</li>
+                <li><strong>LLVM IR Generation:</strong> AST optimizado → LLVM IR textual</li>
+                <li><strong>LLVM Optimization:</strong> Optimizaciones a nivel LLVM (opcional)</li>
+                <li><strong>Code Generation:</strong> LLVM IR → código máquina nativo vía Clang</li>
+            </ol>
+
+            <h3>Inspección de LLVM IR</h3>
+            <p>Este playground permite inspeccionar el código LLVM IR generado mediante el tab "LLVM IR". El IR muestra:</p>
+            <ul>
+                <li>Declaraciones de funciones y tipos</li>
+                <li>Instrucciones SSA (Static Single Assignment)</li>
+                <li>Bloques básicos y control flow</li>
+                <li>Llamadas a funciones built-in (printf, sqrt, sin, etc.)</li>
+            </ul>
+
             <div class="tip">
-                <strong>🚀 Tip Pro:</strong> Usa <code>⌘ Enter</code> para ejecutar rápidamente. El playground compila a LLVM IR y ejecuta en tiempo real.
+                <strong>Ejecución Rápida:</strong> Use Command+Enter (macOS) o Ctrl+Enter (Windows/Linux) para compilar y ejecutar el código actual. El tiempo de compilación y ejecución se muestra en la esquina inferior derecha. Cambie al tab "LLVM IR" para inspeccionar el código intermedio generado.
             </div>
         </div>
     </div>
@@ -1324,16 +1992,7 @@ require(['vs/editor/editor.main'], function () {
     });
 
     // ── Botón ejecutar ──
-    const runBtn = document.getElementById('run-btn');
-    if (runBtn) {
-        console.log('Botón encontrado, agregando listener');
-        runBtn.addEventListener('click', () => {
-            console.log('Click detectado!');
-            window.runCode();
-        });
-    } else {
-        console.error('No se encontró el botón run-btn');
-    }
+    document.getElementById('run-btn').addEventListener('click', () => window.runCode());
 
     // ── View Toggle (Editor ↔ Docs) ──
     
