@@ -292,6 +292,20 @@ impl Parser {
                 self.consume(&Token::RParen, "Expected ')' after print arguments")?;
                 Ok(Spanned::new(Expr::Call { func: "print".to_string(), args }, pos))
             }
+            Token::Concat => {
+                // Soporte para argumentos simbólicos de macros (@variable)
+                // Se parsea como una variable normal (Identifier)
+                // El prefijo @ indica al programador que se pasa simbólicamente,
+                // pero el parser lo trata como identificador.
+                match self.advance()?.0 {
+                    Token::Identifier(name) => Ok(Spanned::new(Expr::Identifier(name), pos)),
+                    t => Err(ParseError::UnexpectedToken {
+                        expected: "identifier after @".to_string(),
+                        found: format!("{:?}", t),
+                        pos: self.peek_pos(),
+                    }),
+                }
+            }
             _ => Err(ParseError::InvalidExpression(pos)),
         }
     }
@@ -615,6 +629,14 @@ impl Parser {
             }
         }
         self.consume(&Token::RParen, "Expected ')' after call arguments")?;
+
+        // Soporte para bloque trailing (último argumento como bloque)
+        // Esto es esencial para macros como repeat(n) { ... }
+        if self.check(&Token::LBrace) {
+            let pos = self.peek_pos();
+            self.match_token(&Token::LBrace); // Consumir '{'
+            args.push(self.parse_block_expr(pos)?);
+        }
 
         Ok(Spanned::new(Expr::Call { func: func_name, args }, left.pos))
     }

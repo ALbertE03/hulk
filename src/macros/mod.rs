@@ -86,6 +86,19 @@ impl MacroExpansionContext {
     fn expand_expr(&mut self, expr: Spanned<Expr>) -> Spanned<Expr> {
         let pos = expr.pos;
         let expanded_node = match expr.node {
+            // Identifier: aplicar sustituciones si existen
+            Expr::Identifier(name) => {
+                if let Some(expr_sub) = self.expr_substitutions.get(&name) {
+                    // Hemos encontrado una sustitución (parámetro normal o match binding)
+                    // Expandimos la sustitución recursivamente por si contiene más macros
+                    return self.expand_expr(expr_sub.clone());
+                } else if let Some(substitution) = self.substitutions.get(&name) {
+                    Expr::Identifier(substitution.clone())
+                } else {
+                    Expr::Identifier(name)
+                }
+            }
+
             // Llamadas a macros se convierten en expansión
             Expr::Call { func, args } => {
                 if let Some(macro_decl) = self.macros.get(&func).cloned() {
@@ -160,6 +173,44 @@ impl MacroExpansionContext {
                 cases,
                 default,
             } => {
+                let expanded_expr_node = self.expand_expr(*expr);
+                
+                // Intentar Pattern Matching en tiempo de compilación
+                // Esto es crucial para macros que inspeccionan la estructura AST
+                for case in &cases {
+                    if let Some(bindings) = self.pattern_match(&case.pattern, &expanded_expr_node) {
+                        // ¡Coincidencia encontrada!
+                        let old_substitutions = self.substitutions.clone();
+                        let old_expr_substitutions = self.expr_substitutions.clone();
+
+                        // Inyectar bindings en el contexto de sustitución
+                        self.expr_substitutions.extend(bindings);
+                        
+                        // Expandir el cuerpo del caso con los nuevos bindings
+                        let result = self.expand_expr(case.expr.clone());
+
+                        // Restaurar contexto
+                        self.substitutions = old_substitutions;
+                        self.expr_substitutions = old_expr_substitutions;
+
+                        return Spanned::new(result.node, pos);
+                    }
+                }
+                
+                // Si ninguna coincidencia estructural (AST) funciona, conservamos el nodo Match
+                // para que se resuelva en tiempo de ejecución (si es un match de tipos válido).
+                // Pero si hay un bloque default, y estamos en el contexto de macro expansión 
+                // donde el match falló, ¿quizás debamos expandir el default?
+                // La semántica de HULK macros sugiere que el match se "resuelve".
+                // Si no hay match estructural, y hay default, tomamos el default.
+                if let Some(def) = default {
+                     // Nota: Esto asume que el match era estructural y falló.
+                     // Si era un match de tipos runtime que casualmente no coincidió estructuralmente con AST...
+                     // Es ambigüo. Pero dado el use case de "simplify", el default actúa como fallback.
+                     return self.expand_expr(*def);
+                }
+
+                // Fallback: generar nodo Match para runtime
                 let expanded_cases = cases
                     .into_iter()
                     .map(|case| MatchCase {
@@ -169,9 +220,9 @@ impl MacroExpansionContext {
                     .collect();
 
                 Expr::Match {
-                    expr: Box::new(self.expand_expr(*expr)),
+                    expr: Box::new(expanded_expr_node),
                     cases: expanded_cases,
-                    default: default.map(|d| Box::new(self.expand_expr(*d))),
+                    default: None, // El default ya se habría tomado arriba si existiera
                 }
             }
 
@@ -302,11 +353,11 @@ impl MacroExpansionContext {
                     }
                 }
 
-                MacroParam::Body { name: _, .. } => {
+                MacroParam::Body { name, .. } => {
                     // Body argument: capturar expresión completa
                     // Típicamente el último argumento
                     if let Some(arg) = args.last() {
-                        _body_arg = Some(arg.clone());
+                        self.expr_substitutions.insert(name.clone(), arg.clone());
                     }
                 }
             }
@@ -327,9 +378,218 @@ impl MacroExpansionContext {
 
     /// Sanitiza variables en el body de una macro (renombra para evitar captura)
     pub fn sanitize_expr(&self, expr: &Spanned<Expr>) -> Spanned<Expr> {
-        // TODO: Implementar renombrado real usando gensym
-        // Por ahora retornar clon sin cambios
-        expr.clone()
+        let mut scope = HashMap::new();
+        self.sanitize_expr_with_scope(expr, &mut scope)
+    }
+
+    fn sanitize_expr_with_scope(&self, expr: &Spanned<Expr>, scope: &mut HashMap<String, String>) -> Spanned<Expr> {
+        let pos = expr.pos;
+        let node = match &expr.node {
+            Expr::Let { bindings, body } => {
+                let mut inner_scope = scope.clone();
+                let mut new_bindings = Vec::new();
+
+                for (name, ty, init) in bindings {
+                    // Init se sanitiza con el scope ACTUAL (antes de añadir la nueva variable)
+                    let new_init = self.sanitize_expr_with_scope(init, &mut inner_scope);
+
+                    // Generar nuevo nombre para la variable
+                    let new_name = gensym(name);
+                    inner_scope.insert(name.clone(), new_name.clone());
+
+                    new_bindings.push((new_name, ty.clone(), new_init));
+                }
+
+                let new_body = self.sanitize_expr_with_scope(body, &mut inner_scope);
+                
+                Expr::Let {
+                    bindings: new_bindings,
+                    body: Box::new(new_body),
+                }
+            },
+            
+            Expr::For { var, iterable, body } => {
+                let new_iterable = self.sanitize_expr_with_scope(iterable, scope);
+                
+                let mut inner_scope = scope.clone();
+                let new_var = gensym(var);
+                inner_scope.insert(var.clone(), new_var.clone());
+                
+                let new_body = self.sanitize_expr_with_scope(body, &mut inner_scope);
+                
+                Expr::For {
+                    var: new_var,
+                    iterable: Box::new(new_iterable),
+                    body: Box::new(new_body),
+                }
+            },
+            
+            Expr::VectorGenerator { expr, var, iterable } => {
+                let new_iterable = self.sanitize_expr_with_scope(iterable, scope);
+                
+                let mut inner_scope = scope.clone();
+                let new_var = gensym(var);
+                inner_scope.insert(var.clone(), new_var.clone());
+                
+                let new_expr = self.sanitize_expr_with_scope(expr, &mut inner_scope);
+                
+                Expr::VectorGenerator {
+                    expr: Box::new(new_expr),
+                    var: new_var,
+                    iterable: Box::new(new_iterable),
+                }
+            },
+            
+            Expr::Lambda { params, return_type, body } => {
+                let mut inner_scope = scope.clone();
+                let new_params = params.iter().map(|p| {
+                     let new_name = gensym(&p.name);
+                     inner_scope.insert(p.name.clone(), new_name.clone());
+                     crate::ast::nodes::Param {
+                         name: new_name,
+                         type_annotation: p.type_annotation.clone(),
+                     }
+                }).collect();
+                
+                let new_body = self.sanitize_expr_with_scope(body, &mut inner_scope);
+                
+                Expr::Lambda {
+                    params: new_params,
+                    return_type: return_type.clone(),
+                    body: Box::new(new_body),
+                }
+            },
+            
+            Expr::Match { expr, cases, default } => {
+                let new_expr = self.sanitize_expr_with_scope(expr, scope);
+                
+                let new_cases = cases.iter().map(|case| {
+                    let mut inner_scope = scope.clone();
+                    let new_pattern = self.sanitize_pattern(&case.pattern, &mut inner_scope);
+                    let new_case_expr = self.sanitize_expr_with_scope(&case.expr, &mut inner_scope);
+                    
+                    MatchCase {
+                        pattern: new_pattern,
+                        expr: new_case_expr,
+                    }
+                }).collect();
+                
+                let new_default = default.as_ref().map(|d| Box::new(self.sanitize_expr_with_scope(d, scope)));
+                
+                Expr::Match {
+                    expr: Box::new(new_expr),
+                    cases: new_cases,
+                    default: new_default,
+                }
+            },
+
+            Expr::Identifier(name) => {
+                if let Some(new_name) = scope.get(name) {
+                    Expr::Identifier(new_name.clone())
+                } else {
+                    Expr::Identifier(name.clone())
+                }
+            },
+            
+            // Recursive delegation for other nodes (standard traversal)
+            Expr::Block(exprs) => Expr::Block(exprs.iter().map(|e| self.sanitize_expr_with_scope(e, scope)).collect()),
+            Expr::If { cond, then_expr, else_expr } => Expr::If {
+                cond: Box::new(self.sanitize_expr_with_scope(cond, scope)),
+                then_expr: Box::new(self.sanitize_expr_with_scope(then_expr, scope)),
+                else_expr: Box::new(self.sanitize_expr_with_scope(else_expr, scope)),
+            },
+            Expr::While { cond, body } => Expr::While {
+                cond: Box::new(self.sanitize_expr_with_scope(cond, scope)),
+                body: Box::new(self.sanitize_expr_with_scope(body, scope)),
+            },
+            Expr::Binary(left, op, right) => Expr::Binary(
+                Box::new(self.sanitize_expr_with_scope(left, scope)),
+                op.clone(),
+                Box::new(self.sanitize_expr_with_scope(right, scope)),
+            ),
+            Expr::Unary(op, operand) => Expr::Unary(
+                op.clone(),
+                Box::new(self.sanitize_expr_with_scope(operand, scope)),
+            ),
+            Expr::Call { func, args } => Expr::Call {
+                func: func.clone(),
+                args: args.iter().map(|a| self.sanitize_expr_with_scope(a, scope)).collect(),
+            },
+            Expr::MethodCall { obj, method, args } => Expr::MethodCall {
+                obj: Box::new(self.sanitize_expr_with_scope(obj, scope)),
+                method: method.clone(),
+                args: args.iter().map(|a| self.sanitize_expr_with_scope(a, scope)).collect(),
+            },
+             Expr::Assignment { target, value } => {
+                let new_target = if let Some(new_name) = scope.get(target) {
+                    new_name.clone()
+                } else {
+                    target.clone()
+                };
+                Expr::Assignment {
+                    target: new_target,
+                    value: Box::new(self.sanitize_expr_with_scope(value, scope)),
+                }
+            },
+            Expr::AttributeAssignment { obj, attribute, value } => Expr::AttributeAssignment {
+                obj: Box::new(self.sanitize_expr_with_scope(obj, scope)),
+                attribute: attribute.clone(),
+                value: Box::new(self.sanitize_expr_with_scope(value, scope)),
+            },
+            Expr::AttributeAccess { obj, attribute } => Expr::AttributeAccess {
+                obj: Box::new(self.sanitize_expr_with_scope(obj, scope)),
+                attribute: attribute.clone(),
+            },
+             Expr::Instantiation { ty, args } => Expr::Instantiation {
+                ty: ty.clone(),
+                args: args.iter().map(|a| self.sanitize_expr_with_scope(a, scope)).collect(),
+            },
+            Expr::VectorLiteral(elements) => Expr::VectorLiteral(
+                elements.iter().map(|e| self.sanitize_expr_with_scope(e, scope)).collect()
+            ),
+            Expr::Indexing { obj, index } => Expr::Indexing {
+                obj: Box::new(self.sanitize_expr_with_scope(obj, scope)),
+                index: Box::new(self.sanitize_expr_with_scope(index, scope)),
+            },
+            Expr::Is(e, ty) => Expr::Is(Box::new(self.sanitize_expr_with_scope(e, scope)), ty.clone()),
+            Expr::As(e, ty) => Expr::As(Box::new(self.sanitize_expr_with_scope(e, scope)), ty.clone()),
+            Expr::Sqrt(e) => Expr::Sqrt(Box::new(self.sanitize_expr_with_scope(e, scope))),
+            Expr::Sin(e) => Expr::Sin(Box::new(self.sanitize_expr_with_scope(e, scope))),
+            Expr::Cos(e) => Expr::Cos(Box::new(self.sanitize_expr_with_scope(e, scope))),
+            Expr::Exp(e) => Expr::Exp(Box::new(self.sanitize_expr_with_scope(e, scope))),
+            Expr::Log(base, x) => Expr::Log(
+                Box::new(self.sanitize_expr_with_scope(base, scope)),
+                Box::new(self.sanitize_expr_with_scope(x, scope)),
+            ),
+            
+            // Terminales y otros
+            other => other.clone(),
+        };
+        Spanned::new(node, pos)
+    }
+
+    fn sanitize_pattern(&self, pattern: &Pattern, scope: &mut HashMap<String, String>) -> Pattern {
+        match pattern {
+            Pattern::Variable { name, type_annotation } => {
+                let new_name = gensym(name);
+                scope.insert(name.clone(), new_name.clone());
+                Pattern::Variable { name: new_name, type_annotation: type_annotation.clone() }
+            },
+            Pattern::Binary { left, op, right } => Pattern::Binary {
+                left: Box::new(self.sanitize_pattern(left, scope)),
+                op: op.clone(),
+                right: Box::new(self.sanitize_pattern(right, scope)),
+            },
+            Pattern::Unary { op, operand } => Pattern::Unary {
+                op: op.clone(),
+                operand: Box::new(self.sanitize_pattern(operand, scope)),
+            },
+            Pattern::Call { func, args } => Pattern::Call {
+                func: func.clone(),
+                args: args.iter().map(|p| self.sanitize_pattern(p, scope)).collect(),
+            },
+            other => other.clone(),
+        }
     }
 
     /// Aplica sustituciones a una expresión
@@ -384,10 +644,14 @@ impl MacroExpansionContext {
                 let substituted_bindings = bindings
                     .into_iter()
                     .map(|(name, ty, init)| {
-                        // Nota: No sustituimos nombres de variables definidas en let
-                        // porque son locales a la macro/bloque. 
-                        // Solo sustituimos en la inicialización
-                        (name, ty, self.apply_substitutions(init))
+                        // Revisar si el nombre de la variable está en las sustituciones
+                        // Esto es crucial para parámetros de tipo placeholder ($param)
+                        let new_name = if let Some(sub) = self.substitutions.get(&name) {
+                            sub.clone()
+                        } else {
+                            name
+                        };
+                        (new_name, ty, self.apply_substitutions(init))
                     })
                     .collect();
                 Expr::Let {
@@ -445,6 +709,16 @@ impl MacroExpansionContext {
                 params,
                 return_type,
                 body: Box::new(self.apply_substitutions(*body)),
+            },
+
+            // Match: sustituir en la expresión discriminante y en las expresiones de los casos
+            Expr::Match { expr, cases, default } => Expr::Match {
+                expr: Box::new(self.apply_substitutions(*expr)),
+                cases: cases.into_iter().map(|case| MatchCase {
+                    pattern: case.pattern,
+                    expr: self.apply_substitutions(case.expr),
+                }).collect(),
+                default: default.map(|d| Box::new(self.apply_substitutions(*d))),
             },
             
             // Math functions

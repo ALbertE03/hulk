@@ -20,6 +20,7 @@ fn main() {
 
     let mut parser = Parser::new(&input);
     match parser.parse_program() {
+
         Ok(program) => {
             let expanded = expand_macros(program);
             

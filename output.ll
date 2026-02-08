@@ -37,9 +37,6 @@ declare double @llvm.floor.f64(double)
 @.gc_len   = global i64 0
 @.gc_cap   = global i64 0
 
-@.slit_3 = private unnamed_addr constant [7 x i8] c"Radio:\00"
-@.slit_22 = private unnamed_addr constant [6 x i8] c"Area:\00"
-@.slit_41 = private unnamed_addr constant [11 x i8] c"Perimetro:\00"
 
 define void @__hulk_gc_track(i8* %ptr) {
 entry:
@@ -160,86 +157,24 @@ entry:
 define i32 @main() {
 entry:
   %t0 = alloca double
-  store double 3.14159e0, double* %t0
+  store double 1.0e1, double* %t0
   %t1 = alloca double
-  store double 5.0e0, double* %t1
-  %t2 = alloca double
-  store double 7.853975e1, double* %t2
-  %t4 = ptrtoint i8* getelementptr inbounds ([7 x i8], [7 x i8]* @.slit_3, i64 0, i64 0) to i64
-  %t5 = bitcast i64 %t4 to double
-  %t7 = bitcast double %t5 to i64
-  %t8 = alloca i64
-  store i64 %t7, i64* %t8
-  %t9 = load i64, i64* %t8
-  %t10 = inttoptr i64 %t9 to i8*
-  %t11 = call i8* @__hulk_num_to_str(double 5.0e0)
-  %t12 = call i64 @strlen(i8* %t10)
-  %t13 = call i64 @strlen(i8* %t11)
-  %t14 = add i64 %t12, %t13
-  %t15 = add i64 %t14, 2
-  %t16 = call i8* @malloc(i64 %t15)
-  call void @__hulk_gc_track(i8* %t16)
-  call i8* @strcpy(i8* %t16, i8* %t10)
-  call i8* @strcat(i8* %t16, i8* getelementptr inbounds ([2 x i8], [2 x i8]* @.space_s, i64 0, i64 0))
-  call i8* @strcat(i8* %t16, i8* %t11)
-  %t17 = ptrtoint i8* %t16 to i64
-  %t6 = bitcast i64 %t17 to double
-  %t18 = bitcast double %t6 to i64
-  %t19 = alloca i64
-  store i64 %t18, i64* %t19
-  %t20 = load i64, i64* %t19
-  %t21 = inttoptr i64 %t20 to i8*
-  call i32 @puts(i8* %t21)
-  %t23 = ptrtoint i8* getelementptr inbounds ([6 x i8], [6 x i8]* @.slit_22, i64 0, i64 0) to i64
-  %t24 = bitcast i64 %t23 to double
-  %t26 = bitcast double %t24 to i64
-  %t27 = alloca i64
-  store i64 %t26, i64* %t27
-  %t28 = load i64, i64* %t27
-  %t29 = inttoptr i64 %t28 to i8*
-  %t30 = call i8* @__hulk_num_to_str(double 7.853975e1)
-  %t31 = call i64 @strlen(i8* %t29)
-  %t32 = call i64 @strlen(i8* %t30)
-  %t33 = add i64 %t31, %t32
-  %t34 = add i64 %t33, 2
-  %t35 = call i8* @malloc(i64 %t34)
-  call void @__hulk_gc_track(i8* %t35)
-  call i8* @strcpy(i8* %t35, i8* %t29)
-  call i8* @strcat(i8* %t35, i8* getelementptr inbounds ([2 x i8], [2 x i8]* @.space_s, i64 0, i64 0))
-  call i8* @strcat(i8* %t35, i8* %t30)
-  %t36 = ptrtoint i8* %t35 to i64
-  %t25 = bitcast i64 %t36 to double
-  %t37 = bitcast double %t25 to i64
-  %t38 = alloca i64
-  store i64 %t37, i64* %t38
-  %t39 = load i64, i64* %t38
-  %t40 = inttoptr i64 %t39 to i8*
-  call i32 @puts(i8* %t40)
-  %t42 = ptrtoint i8* getelementptr inbounds ([11 x i8], [11 x i8]* @.slit_41, i64 0, i64 0) to i64
-  %t43 = bitcast i64 %t42 to double
-  %t45 = bitcast double %t43 to i64
-  %t46 = alloca i64
-  store i64 %t45, i64* %t46
-  %t47 = load i64, i64* %t46
-  %t48 = inttoptr i64 %t47 to i8*
-  %t49 = call i8* @__hulk_num_to_str(double 3.14159e1)
-  %t50 = call i64 @strlen(i8* %t48)
-  %t51 = call i64 @strlen(i8* %t49)
-  %t52 = add i64 %t50, %t51
-  %t53 = add i64 %t52, 2
-  %t54 = call i8* @malloc(i64 %t53)
-  call void @__hulk_gc_track(i8* %t54)
-  call i8* @strcpy(i8* %t54, i8* %t48)
-  call i8* @strcat(i8* %t54, i8* getelementptr inbounds ([2 x i8], [2 x i8]* @.space_s, i64 0, i64 0))
-  call i8* @strcat(i8* %t54, i8* %t49)
-  %t55 = ptrtoint i8* %t54 to i64
-  %t44 = bitcast i64 %t55 to double
-  %t56 = bitcast double %t44 to i64
-  %t57 = alloca i64
-  store i64 %t56, i64* %t57
-  %t58 = load i64, i64* %t57
-  %t59 = inttoptr i64 %t58 to i8*
-  call i32 @puts(i8* %t59)
+  store double 1.0e1, double* %t1
+  br label %wcond_2
+wcond_2:
+  %t5 = load double, double* %t1
+  %t7 = fcmp oge double %t5, 0.0e0
+  %t6 = uitofp i1 %t7 to double
+  %t8 = fcmp one double %t6, 0.0
+  br i1 %t8, label %wbody_3, label %wend_4
+wbody_3:
+  %t9 = load double, double* %t1
+  %t10 = fsub double %t9, 1.0e0
+  store double %t10, double* %t1
+  call i32 (i8*, ...) @printf(i8* getelementptr inbounds ([5 x i8], [5 x i8]* @.fmt_num, i64 0, i64 0), double 1.0e1)
+  call i32 @puts(i8* getelementptr inbounds ([1 x i8], [1 x i8]* @.empty_s, i64 0, i64 0))
+  br label %wcond_2
+wend_4:
   call void @__hulk_gc_sweep()
   ret i32 0
 }
