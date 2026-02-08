@@ -161,7 +161,9 @@ declare double @llvm.exp.f64(double)\n\
 declare double @llvm.log.f64(double)\n\
 declare double @llvm.sqrt.f64(double)\n\
 declare double @llvm.fabs.f64(double)\n\
+declare double @llvm.floor.f64(double)\n\
 \n\
+@.fmt_int  = private unnamed_addr constant [5 x i8] c\"%.0f\\00\"\n\
 @.fmt_num  = private unnamed_addr constant [5 x i8] c\"%.6g\\00\"\n\
 @.fmt_str  = private unnamed_addr constant [3 x i8] c\"%s\\00\"\n\
 @.fmt_nl   = private unnamed_addr constant [2 x i8] c\"\\0A\\00\"\n\
@@ -366,18 +368,34 @@ done:
 ");
 
     // ── @__hulk_num_to_str(double) -> i8*  ─  convertir un número a cadena en el heap
+    //    Si el número es entero (floor(x) == x y |x| < 1e15), imprime sin decimales.
+    //    Si tiene parte decimal, usa %g con 15 dígitos significativos.
     ctx.functions.push_str("\
 define i8* @__hulk_num_to_str(double %val) {
 entry:
-  ; Primera pasada: medir la longitud necesaria
-  %len = call i32 (i8*, i64, i8*, ...) @snprintf(i8* null, i64 0, i8* getelementptr inbounds ([5 x i8], [5 x i8]* @.fmt_num, i64 0, i64 0), double %val)
-  %len64 = sext i32 %len to i64
-  %bufsz = add i64 %len64, 1
-  %buf = call i8* @malloc(i64 %bufsz)
-  call void @__hulk_gc_track(i8* %buf)
-  ; Segunda pasada: formatear realmente
-  call i32 (i8*, i64, i8*, ...) @snprintf(i8* %buf, i64 %bufsz, i8* getelementptr inbounds ([5 x i8], [5 x i8]* @.fmt_num, i64 0, i64 0), double %val)
-  ret i8* %buf
+  %fl = call double @llvm.floor.f64(double %val)
+  %diff = fsub double %val, %fl
+  %is_int = fcmp oeq double %diff, 0.0
+  %abs_val = call double @llvm.fabs.f64(double %val)
+  %small_enough = fcmp olt double %abs_val, 1.0e15
+  %use_int = and i1 %is_int, %small_enough
+  br i1 %use_int, label %fmt_as_int, label %fmt_as_dbl
+fmt_as_int:
+  %ilen = call i32 (i8*, i64, i8*, ...) @snprintf(i8* null, i64 0, i8* getelementptr inbounds ([5 x i8], [5 x i8]* @.fmt_int, i64 0, i64 0), double %val)
+  %ilen64 = sext i32 %ilen to i64
+  %ibufsz = add i64 %ilen64, 1
+  %ibuf = call i8* @malloc(i64 %ibufsz)
+  call void @__hulk_gc_track(i8* %ibuf)
+  call i32 (i8*, i64, i8*, ...) @snprintf(i8* %ibuf, i64 %ibufsz, i8* getelementptr inbounds ([5 x i8], [5 x i8]* @.fmt_int, i64 0, i64 0), double %val)
+  ret i8* %ibuf
+fmt_as_dbl:
+  %dlen = call i32 (i8*, i64, i8*, ...) @snprintf(i8* null, i64 0, i8* getelementptr inbounds ([5 x i8], [5 x i8]* @.fmt_num, i64 0, i64 0), double %val)
+  %dlen64 = sext i32 %dlen to i64
+  %dbufsz = add i64 %dlen64, 1
+  %dbuf = call i8* @malloc(i64 %dbufsz)
+  call void @__hulk_gc_track(i8* %dbuf)
+  call i32 (i8*, i64, i8*, ...) @snprintf(i8* %dbuf, i64 %dbufsz, i8* getelementptr inbounds ([5 x i8], [5 x i8]* @.fmt_num, i64 0, i64 0), double %val)
+  ret i8* %dbuf
 }
 
 ");

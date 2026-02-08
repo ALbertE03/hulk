@@ -1,4 +1,4 @@
-# HULK Compiler 🚀
+# HULK Compiler
 
 Compilador completo para el lenguaje de programación **HULK**, implementado en Rust. Genera **LLVM IR** que puede compilarse a código nativo para cualquier arquitectura soportada (x86, ARM, RISC-V, etc.). El proyecto cubre todas las fases clásicas de un compilador moderno: análisis léxico, análisis sintáctico, construcción del AST, expansión de macros, análisis semántico, optimización y generación de código LLVM IR.
 
@@ -90,6 +90,24 @@ cargo build
 ```bash
 cargo test
 ```
+
+### 🌐 Playground Web Interactivo
+
+Ejecuta el playground web con editor Monaco, compilación en tiempo real y documentación completa:
+
+```bash
+cargo run --bin hulk-playground
+```
+
+Abre tu navegador en [http://localhost:8080](http://localhost:8080)
+
+**Características:**
+- ✨ Editor Monaco con syntax highlighting para HULK
+- 🚀 Compilación y ejecución en tiempo real
+- 📚 Documentación completa integrada
+- 🎯 9 ejemplos interactivos (funciones, tipos, iterables, etc.)
+- 🔍 Visualización de LLVM IR generado
+- ⌨️ Shortcuts: `⌘ Enter` para ejecutar
 
 ### Compilar un programa HULK a ejecutable nativo
 
