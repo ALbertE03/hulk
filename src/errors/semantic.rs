@@ -1,12 +1,17 @@
+use crate::utils::Position;
+
 #[derive(Debug, Clone)]
 pub enum SemanticError {
     TypeDefined(String),
     FunctionDefined(String),
     TypeNotFound(String),
     FunctionNotFound(String, usize), // Nombre, Cantidad de argumentos
+    UndefinedFunction(String, Position),
     VariableNotFound(String),
+    UndefinedVariable(String, Position),
     OperationNotDefined(String, String), // Operador, Tipo
-    TypeMismatch { expected: String, found: String },
+    TypeMismatch { expected: String, found: String, pos: Position },
+    ArgumentMismatch { expected: usize, found: usize, pos: Position },
     AttributeDefined(String),
     MethodDefined(String),
     MethodNotFound(String),

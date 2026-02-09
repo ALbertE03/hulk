@@ -4,10 +4,13 @@ Este módulo implementa la fase de análisis semántico del compilador HULK. Su 
 
 ## Estructura del Módulo
 
-- **`mod.rs`**: Contiene la lógica principal del chequeo semántico (`check_program`) y el visitante de expresiones (`BodyChecker`). (~350 líneas)
-- **`types.rs`**: Define el sistema de tipos (`Type`, `TypeKind`, `MethodInfo`). Incluye lógica crucial como la verificación de conformidad de tipos (`conforms_to`) y el cálculo del ancestro común más bajo (`lowest_common_ancestor`). (~175 líneas)
-- **`scope.rs`**: Implementa la tabla de símbolos para el manejo de variables y su visibilidad. Soporta anidamiento de ámbitos (scopes).
-- **`tests.rs`**: Suite de pruebas unitarias que verifica diversos escenarios semánticos.
+El módulo `semantic` está organizado en los siguientes archivos:
+
+- **`mod.rs`** : Orquestador principal con la función pública `check_program()` que ejecuta las 4 pasadas de análisis
+- **`context.rs`** : Define la estructura `Context` que contiene toda la información semántica (tipos, jerarquía, métodos)
+- **`visitor.rs`** : Implementa `BodyChecker`, el visitor que recorre expresiones validando tipos
+- **`types.rs`**: Sistema de tipos completo (`Type`, `TypeKind`, `MethodInfo`, verificación de conformidad)
+- **`tests.rs`**: Suite de pruebas unitarias que verifica diversos escenarios semánticos
 
 ## Proceso de Análisis
 
@@ -31,13 +34,13 @@ El análisis se realiza en **4 pasadas** sobre el Árbol de Sintaxis Abstracta (
 
 ### Pasada 4: Verificación de Cuerpos (Body Check)
 - Se visitan las expresiones dentro de las funciones globales y los miembros de las clases.
-- Se utiliza `BodyChecker` para recorrer el AST de expresiones.
+- Se utiliza `BodyChecker` (en `visitor.rs`) para recorrer el AST de expresiones.
 - Se resuelven los tipos de las expresiones y se comparan con los esperados.
 - Se maneja el **Scope** (ámbito de variables), entrando y saliendo de nuevos ámbitos en expresiones `let`, funciones, etc.
 
 ## Sistema de Tipos
 
-El sistema de tipos soporta:
+El sistema de tipos (en `types.rs`) soporta:
 - **Tipos Básicos**: `Number`, `Boolean`, `String`, `Object`.
 - **Clases de Usuario**: Definidas con `type`.
 - **Protocolos**: Definidos con `protocol` (verificación estructural).
@@ -46,7 +49,7 @@ El sistema de tipos soporta:
 
 ## Contexto Semántico (`Context`)
 
-La función `check_program` retorna un `Context` que contiene la información de tipos resuelta, utilizada por el codegen:
+La función `check_program` (en `mod.rs`) retorna un `Context` (definido en `context.rs`) que contiene la información de tipos resuelta, utilizada por el codegen:
 
 ```rust
 pub struct Context {

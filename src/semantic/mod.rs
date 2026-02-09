@@ -1,114 +1,26 @@
+// Módulos públicos
 pub mod types;
-pub mod scope;
+pub mod context;
+pub mod visitor;
+
+pub use context::Context;
+pub use visitor::TypeChecker;
 
 #[cfg(test)]
 mod tests;
 
 use crate::ast::nodes::*;
-use crate::utils::Spanned;
 use crate::errors::SemanticError;
-use types::{Type, TypeKind, MethodInfo, TypeFactory, lowest_common_ancestor};
-use scope::Scope;
-use std::collections::{HashMap, HashSet};
-use std::rc::Rc;
-use std::cell::RefCell;
+use types::{TypeKind, MethodInfo};
+use context::conforms_to;
+use std::collections::HashSet;
 
-pub struct Context {
-    pub types: HashMap<String, Rc<RefCell<Type>>>,
-    pub functions: HashMap<String, (Vec<Rc<RefCell<Type>>>, Rc<RefCell<Type>>)>,
-}
-
-impl Context {
-    pub fn new() -> Self {
-        let mut types = HashMap::new();
-        let object = TypeFactory::object();
-        types.insert("Object".to_string(), object.clone());
-        types.insert("Number".to_string(), TypeFactory::number(object.clone()));
-        types.insert("Boolean".to_string(), TypeFactory::boolean(object.clone()));
-        types.insert("String".to_string(), TypeFactory::string(object.clone()));
-        
-        Context { 
-            types,
-            functions: HashMap::new(),
-        }
-    }
-
-    pub fn get_type(&self, name: &str) -> Result<Rc<RefCell<Type>>, SemanticError> {
-        self.types.get(name)
-            .cloned()
-            .ok_or(SemanticError::TypeNotFound(name.to_string()))
-    }
-    
-    pub fn create_type(&mut self, name: &str) -> Result<Rc<RefCell<Type>>, SemanticError> {
-        if self.types.contains_key(name) {
-             return Err(SemanticError::TypeDefined(name.to_string()));
-        }
-        let t = Rc::new(RefCell::new(Type::new(name, TypeKind::Basic, None)));
-        self.types.insert(name.to_string(), t.clone());
-        Ok(t)
-    }
-
-    pub fn define_function(&mut self, name: &str, params: Vec<Rc<RefCell<Type>>>, ret: Rc<RefCell<Type>>) -> Result<(), SemanticError> {
-        if self.functions.contains_key(name) {
-            return Err(SemanticError::FunctionDefined(name.to_string()));
-        }
-        self.functions.insert(name.to_string(), (params, ret));
-        Ok(())
-    }
-    
-    pub fn get_function(&self, name: &str) -> Option<(Vec<Rc<RefCell<Type>>>, Rc<RefCell<Type>>)> {
-        // Primero chequear funciones de la librería estándar si las hay
-        if name == "print" {
-            let obj = self.types.get("Object").unwrap().clone();
-            let void = self.types.get("Object").unwrap().clone(); // Asumiendo que print retorna Object/Void
-            return Some((vec![obj], void));
-        }
-        // Funciones matemáticas
-        if ["sin", "cos", "sqrt", "log", "exp"].contains(&name) {
-             let num = self.types.get("Number").unwrap().clone();
-             return Some((vec![num.clone()], num)); // Unario
-        }
-         if name == "log" { // Binary log(base, val) handled maybe? AST says Log(base, val)
-             // AST tiene Log(base, val) que es binario.
-             // Pero el usuario podría llamar `log(x)` ... espera, Context `get_function` es por nombre.
-             // Si nombres builtin colisionan, necesitamos chequear cantidad de args. Context retorna UNA firma.
-             // Asumimos que la lib estándar esta fija
-         }
-
-        if name == "rand" {
-             let num = self.types.get("Number").unwrap().clone();
-             return Some((vec![], num));
-        }
-
-        self.functions.get(name).cloned()
-    }
-
-    // Resolver TypeAnnotation al Type real
-    pub fn resolve_type(&self, annotation: &TypeAnnotation) -> Result<Rc<RefCell<Type>>, SemanticError> {
-        match annotation {
-            TypeAnnotation::Name(name) => self.get_type(name),
-            TypeAnnotation::Iterable(inner) => {
-                 let inner_type = self.resolve_type(inner)?;
-                 let name = format!("Iterable<{}>", inner_type.borrow().name);
-                 
-                 // Crear 'al vuelo' el protocolo Iterable<T>
-                 // Tiene: next() -> Boolean, current() -> T
-                 let iter = Rc::new(RefCell::new(Type::new(&name, TypeKind::Protocol, None)));
-                 
-                 let bool_type = self.get_type("Boolean")?;
-                 iter.borrow_mut().define_method("next".to_string(), vec![], bool_type);
-                 iter.borrow_mut().define_method("current".to_string(), vec![], inner_type);
-                 
-                 Ok(iter)
-            },
-            TypeAnnotation::Function { params, return_type } => {
-                for p in params { self.resolve_type(p)?; }
-                self.resolve_type(return_type)?;
-                self.get_type("Object") // Tratar tipo función como Object
-            }
-        }
-    }
-}
+/// Función principal del análisis semántico
+/// Realiza el chequeo en múltiples pasadas:
+/// 1. Recolectar tipos y protocolos
+/// 2. Establecer jerarquía de herencia
+/// 3. Recolectar miembros (atributos y métodos)
+/// 4. Chequear cuerpos de funciones y métodos
 
 pub fn check_program(program: &Program) -> Result<Context, Vec<SemanticError>> {
     let mut context = Context::new();
@@ -393,10 +305,8 @@ pub fn check_program(program: &Program) -> Result<Context, Vec<SemanticError>> {
     
     // Chequear Expresión Global
     {
-        // Envolver scope en Rc para compartir
-        let scope = Rc::new(Scope::new());
-        let mut checker = BodyChecker::new(&context, scope);
-        if let Err(mut body_errors) = checker.check_expr(&program.expr) {
+        let mut checker = TypeChecker::new(&context);
+        if let Err(mut body_errors) = checker.infer_type(&program.expr) {
             errors.append(&mut body_errors);
         }
     }
@@ -404,25 +314,24 @@ pub fn check_program(program: &Program) -> Result<Context, Vec<SemanticError>> {
     // Chequear Funciones Globales
     for decl in &program.declarations {
          if let Declaration::Function(func) = decl {
-             let scope = Rc::new(Scope::new());
+             let mut checker = TypeChecker::new(&context);
              // Agregar parámetros al scope
              let (params_types, _) = context.functions.get(&func.name).unwrap();
              for (i, p_decl) in func.params.iter().enumerate() {
                  let t = params_types[i].clone();
-                 scope.define_variable(p_decl.name.clone(), t);
+                 checker.define(p_decl.name.clone(), t);
              }
              
-             let mut checker = BodyChecker::new(&context, scope);
-             if let Err(mut body_errors) = checker.check_expr(&func.body) {
+             if let Err(mut body_errors) = checker.infer_type(&func.body) {
                 errors.append(&mut body_errors);
              }
          }
     }
 
-    // Chequear Macros (def) – treat as functions for body checking
+    // Chequear Macros (def) 
     for decl in &program.declarations {
          if let Declaration::Macro(macro_decl) = decl {
-             let scope = Rc::new(Scope::new());
+             let mut checker = TypeChecker::new(&context);
              let (params_types, _) = context.functions.get(&macro_decl.name).unwrap();
              for (i, p) in macro_decl.params.iter().enumerate() {
                  let pname = match p {
@@ -432,11 +341,10 @@ pub fn check_program(program: &Program) -> Result<Context, Vec<SemanticError>> {
                      | MacroParam::Body { name, .. } => name,
                  };
                  let t = params_types[i].clone();
-                 scope.define_variable(pname.clone(), t);
+                 checker.define(pname.clone(), t);
              }
 
-             let mut checker = BodyChecker::new(&context, scope);
-             if let Err(mut body_errors) = checker.check_expr(&macro_decl.body) {
+             if let Err(mut body_errors) = checker.infer_type(&macro_decl.body) {
                 errors.append(&mut body_errors);
              }
          }
@@ -450,47 +358,44 @@ pub fn check_program(program: &Program) -> Result<Context, Vec<SemanticError>> {
             // 1. Inicialización de Atributos
             // Los atributos pueden usar argumentos del constructor en su inicialización
             for attr in &type_decl.attributes {
-                 let scope = Rc::new(Scope::new());
+                 let mut checker = TypeChecker::new(&context);
                  // Añadir parámetros del constructor al scope
                  for (name, ty) in &type_rc.borrow().params {
-                     scope.define_variable(name.clone(), ty.clone());
+                     checker.define(name.clone(), ty.clone());
                  }
-                 
-                 let mut checker = BodyChecker::new(&context, scope);
                  
                  checker.current_type = Some(type_rc.clone());
 
-                 let init_type = match checker.check_expr(&attr.init) {
+                 let init_type = match checker.infer_type(&attr.init) {
                      Ok(t) => t,
                      Err(mut e) => { errors.append(&mut e); context.get_type("Object").unwrap() }
                  };
                  
                  let attr_type = type_rc.borrow().attributes.get(&attr.name).unwrap().clone();
                  if !conforms_to(init_type.clone(), attr_type.clone()) {
-                      errors.push(SemanticError::TypeMismatch{ expected: attr_type.borrow().name.clone(), found: init_type.borrow().name.clone() });
+                      errors.push(SemanticError::TypeMismatch{ expected: attr_type.borrow().name.clone(), found: init_type.borrow().name.clone(), pos: attr.init.pos });
                  }
             }
 
             // 2. Cuerpos de Métodos
             for method in &type_decl.methods {
-                let scope = Rc::new(Scope::new());
+                let mut checker = TypeChecker::new(&context);
                 let method_info = type_rc.borrow().get_method(&method.name).unwrap();
                 
                 // Definir parámetros del método en el scope
                 for (name, ty) in &method_info.params {
-                    scope.define_variable(name.clone(), ty.clone());
+                    checker.define(name.clone(), ty.clone());
                 }
                 
-                let mut checker = BodyChecker::new(&context, scope);
                 checker.current_type = Some(type_rc.clone()); // 'self' disponible
                 
-                let body_type = match checker.check_expr(&method.body) {
+                let body_type = match checker.infer_type(&method.body) {
                      Ok(t) => t,
                      Err(mut e) => { errors.append(&mut e); context.get_type("Object").unwrap() }
                  };
                  
                  if !conforms_to(body_type.clone(), method_info.return_type.clone()) {
-                      errors.push(SemanticError::TypeMismatch{ expected: method_info.return_type.borrow().name.clone(), found: body_type.borrow().name.clone() });
+                      errors.push(SemanticError::TypeMismatch{ expected: method_info.return_type.borrow().name.clone(), found: body_type.borrow().name.clone(), pos: method.body.pos });
                  }
             }
         }
@@ -499,340 +404,4 @@ pub fn check_program(program: &Program) -> Result<Context, Vec<SemanticError>> {
     if !errors.is_empty() { return Err(errors); }
 
     Ok(context)
-}
-
-struct BodyChecker<'a> {
-    context: &'a Context,
-    scope: Rc<Scope>,
-    current_type: Option<Rc<RefCell<Type>>>,
-}
-
-impl<'a> BodyChecker<'a> {
-    fn new(context: &'a Context, scope: Rc<Scope>) -> Self {
-        BodyChecker { context, scope, current_type: None }
-    }
-    
-    // Retorna el tipo resuelto si tiene éxito
-    fn check_expr(&mut self, expr_spanned: &Spanned<Expr>) -> Result<Rc<RefCell<Type>>, Vec<SemanticError>> {
-        match &expr_spanned.node {
-            Expr::Number(_) => Ok(self.context.get_type("Number").unwrap()),
-            Expr::String(_) => Ok(self.context.get_type("String").unwrap()),
-            Expr::Boolean(_) => Ok(self.context.get_type("Boolean").unwrap()),
-            Expr::Identifier(name) => {
-                if name == "self" {
-                    if let Some(t) = &self.current_type {
-                        Ok(t.clone())
-                    } else {
-                        Err(vec![SemanticError::SelfReference])
-                    }
-                } else if let Some(t) = self.scope.find_variable(name) {
-                    Ok(t)
-                } else {
-                    // ¿Constante?
-                     if name == "PI" || name == "E" {
-                          Ok(self.context.get_type("Number").unwrap())
-                     } else {
-                          Err(vec![SemanticError::VariableNotFound(name.clone())])
-                     }
-                }
-            },
-            Expr::Binary(left, op, right) => {
-               let t_left = self.check_expr(left);
-               let t_right = self.check_expr(right);
-               
-               if t_left.is_ok() && t_right.is_ok() {
-                   let l = t_left.unwrap();
-                   let r = t_right.unwrap();
-                   
-                   if l.borrow().name == "Number" && r.borrow().name == "Number" {
-                        match op {
-                            Op::Add | Op::Sub | Op::Mul | Op::Div | Op::Mod | Op::Pow => Ok(self.context.get_type("Number").unwrap()),
-                            Op::Eq | Op::Neq | Op::Lt | Op::Gt | Op::Le | Op::Ge => Ok(self.context.get_type("Boolean").unwrap()),
-                             _ => Err(vec![SemanticError::OperationNotDefined(format!("{:?}", op), "Number".to_string())])
-                        }
-                   } else if l.borrow().name == "Boolean" && r.borrow().name == "Boolean" {
-                        match op {
-                            Op::And | Op::Or => Ok(self.context.get_type("Boolean").unwrap()),
-                             Op::Eq | Op::Neq => Ok(self.context.get_type("Boolean").unwrap()),
-                            _ => Err(vec![SemanticError::OperationNotDefined(format!("{:?}", op), "Boolean".to_string())])
-                        }
-                   } else if matches!(op, Op::Concat | Op::ConcatSpace) {
-                        // @ and @@ work with any types – codegen converts to string at runtime
-                        Ok(self.context.get_type("String").unwrap())
-                   } else if l.borrow().name == "Object" || r.borrow().name == "Object" {
-                        // When one side is Object (unknown type at compile time),
-                        // allow the operation and infer the result from the known side.
-                        match op {
-                            Op::Add | Op::Sub | Op::Mul | Op::Div | Op::Mod | Op::Pow => Ok(self.context.get_type("Number").unwrap()),
-                            Op::Eq | Op::Neq | Op::Lt | Op::Gt | Op::Le | Op::Ge => Ok(self.context.get_type("Boolean").unwrap()),
-                            Op::And | Op::Or => Ok(self.context.get_type("Boolean").unwrap()),
-                            _ => Ok(self.context.get_type("Object").unwrap()),
-                        }
-                   } else {
-                        if matches!(op, Op::Eq | Op::Neq) {
-                             Ok(self.context.get_type("Boolean").unwrap())
-                        } else {
-                             Err(vec![SemanticError::GenericError(format!("Operation {:?} is not defined for types {} and {}", op, l.borrow().name, r.borrow().name))])
-                        }
-                   }
-               } else {
-                   let mut errs = Vec::new();
-                   if let Err(mut e) = t_left { errs.append(&mut e); }
-                   if let Err(mut e) = t_right { errs.append(&mut e); }
-                   Err(errs)
-               }
-            },
-            Expr::Unary(op, operand) => {
-                 let t_op = self.check_expr(operand)?;
-                 if t_op.borrow().name == "Number" && matches!(op, UnOp::Neg) {
-                      Ok(t_op)
-                 } else if t_op.borrow().name == "Boolean" && matches!(op, UnOp::Not) {
-                      Ok(t_op)
-                 } else {
-                       Err(vec![SemanticError::OperationNotDefined(format!("{:?}", op), t_op.borrow().name.clone())])
-                 }
-            },
-            Expr::Let { bindings, body } => {
-                let current_scope = Rc::new(Scope::new_child(self.scope.clone()));
-                for (name, type_ann, expr_span) in bindings {
-                   
-                    let mut temp_checker = BodyChecker::new(self.context, current_scope.clone());
-                    let t_expr = temp_checker.check_expr(expr_span)?;
-                    
-                    if let Some(ann) = type_ann {
-                         let t_ann = self.context.resolve_type(ann).map_err(|e| vec![e])?;
-                         if !conforms_to(t_expr.clone(), t_ann.clone()) {
-                               return Err(vec![SemanticError::TypeMismatch { expected: t_ann.borrow().name.clone(), found: t_expr.borrow().name.clone() }]);
-                         }
-                    }
-                    current_scope.define_variable(name.clone(), t_expr);
-                }
-                
-                let mut body_checker = BodyChecker::new(self.context, current_scope);
-                body_checker.check_expr(body)
-            },
-            Expr::Block(exprs) => {
-                 let mut last_type = self.context.get_type("Object").unwrap(); 
-                 for e in exprs {
-                     last_type = self.check_expr(e)?;
-                 }
-                 Ok(last_type)
-            },
-            Expr::Call { func: name, args } => {
-                if let Some((param_types, ret_type)) = self.context.get_function(name) {
-                     if args.len() != param_types.len() {
-                          return Err(vec![SemanticError::ArgumentCountMismatch(name.clone(), param_types.len(), args.len())]);
-                     }
-                     for (i, arg_expr) in args.iter().enumerate() {
-                          let arg_type = self.check_expr(arg_expr)?;
-                          if !conforms_to(arg_type.clone(), param_types[i].clone()) {
-                               return Err(vec![SemanticError::TypeMismatch{ expected: param_types[i].borrow().name.clone(), found: arg_type.borrow().name.clone() }]);
-                          }
-                     }
-                     Ok(ret_type)
-                } else if self.scope.find_variable(name).is_some() {
-                    // Variable exists in scope — could be a lambda; check args but return Object
-                    for arg_expr in args {
-                        let _ = self.check_expr(arg_expr)?;
-                    }
-                    Ok(self.context.get_type("Object").unwrap())
-                } else {
-                    Err(vec![SemanticError::FunctionNotFound(name.clone(), args.len())])
-                }
-            },
-             Expr::If{cond, then_expr, else_expr} => {
-                 let t_cond = self.check_expr(cond)?;
-                 // Accept Boolean or Object (Object may be Boolean at runtime)
-                 if t_cond.borrow().name != "Boolean" && t_cond.borrow().name != "Object" {
-                     return Err(vec![SemanticError::TypeMismatch{ expected: "Boolean".to_string(), found: t_cond.borrow().name.clone() }]);
-                 }
-                 let t_then = self.check_expr(then_expr)?;
-                 let t_else = self.check_expr(else_expr)?;
-                 
-                 lowest_common_ancestor(t_then, t_else)
-             },
-             Expr::PI | Expr::E => Ok(self.context.get_type("Number").unwrap()),
-             Expr::Rand => Ok(self.context.get_type("Number").unwrap()),
-             Expr::Sin(e) | Expr::Cos(e) | Expr::Sqrt(e) | Expr::Exp(e) => {
-                 let t = self.check_expr(e)?;
-                 if t.borrow().name != "Number" { return Err(vec![SemanticError::TypeMismatch{expected: "Number".into(), found: t.borrow().name.clone()}]); }
-                 Ok(self.context.get_type("Number").unwrap())
-             },
-             Expr::Log(base, val) => {
-                 let t1 = self.check_expr(base)?;
-                 let t2 = self.check_expr(val)?;
-                 if t1.borrow().name != "Number" { return Err(vec![SemanticError::TypeMismatch{expected: "Number".into(), found: t1.borrow().name.clone()}]); }
-                 if t2.borrow().name != "Number" { return Err(vec![SemanticError::TypeMismatch{expected: "Number".into(), found: t2.borrow().name.clone()}]); }
-                 Ok(self.context.get_type("Number").unwrap())
-             },
-             Expr::Assignment { target, value } => {
-                 if let Some(t_var) = self.scope.find_variable(target) {
-                      let t_val = self.check_expr(value)?;
-                      if !conforms_to(t_val.clone(), t_var.clone()) {
-                          return Err(vec![SemanticError::TypeMismatch{ expected: t_var.borrow().name.clone(), found: t_val.borrow().name.clone() }]);
-                      }
-                      Ok(t_val)
-                 } else {
-                     Err(vec![SemanticError::VariableNotFound(target.clone())])
-                 }
-             },
-             Expr::AttributeAssignment { obj, attribute, value } => {
-                 let t_obj = self.check_expr(obj)?;
-                 let t_val = self.check_expr(value)?;
-                 // Buscar atributo en la jerarquía de tipos
-                 let mut curr = Some(t_obj.clone());
-                 while let Some(c) = curr {
-                     if let Some(attr_type) = c.borrow().attributes.get(attribute) {
-                         if !conforms_to(t_val.clone(), attr_type.clone()) {
-                             return Err(vec![SemanticError::TypeMismatch{ expected: attr_type.borrow().name.clone(), found: t_val.borrow().name.clone() }]);
-                         }
-                         return Ok(t_val);
-                     }
-                     curr = c.borrow().parent.clone();
-                 }
-                 // Atributo no encontrado en info de tipo — permitir como Object (fallback)
-                 Ok(t_val)
-             },
-             Expr::While { cond, body } => {
-                  let t_cond = self.check_expr(cond)?;
-                  // Accept Boolean or Object (Object may be Boolean at runtime)
-                  if t_cond.borrow().name != "Boolean" && t_cond.borrow().name != "Object" {
-                      return Err(vec![SemanticError::TypeMismatch{ expected: "Boolean".to_string(), found: t_cond.borrow().name.clone() }]);
-                  }
-                  let _ = self.check_expr(body)?;
-                  Ok(self.context.get_type("Object").unwrap())
-             },
-             Expr::Instantiation { ty, args } => {
-                 let type_rc = self.context.get_type(ty).map_err(|e| vec![e])?;
-                 let params = type_rc.borrow().params.clone();
-                 if args.len() != params.len() {
-                      return Err(vec![SemanticError::ArgumentCountMismatch(ty.clone(), params.len(), args.len())]);
-                 }
-                 for (i, arg_expr) in args.iter().enumerate() {
-                      let arg_type = self.check_expr(arg_expr)?;
-                      if !conforms_to(arg_type.clone(), params[i].1.clone()) {
-                           return Err(vec![SemanticError::TypeMismatch{ expected: params[i].1.borrow().name.clone(), found: arg_type.borrow().name.clone() }]);
-                      }
-                 }
-                 Ok(type_rc)
-             },
-             Expr::MethodCall { obj, method, args } => {
-                 let t_obj = self.check_expr(obj)?;
-                 // Find method in hierarchy
-                 let mut curr = Some(t_obj.clone());
-                 let mut found_method = None;
-                 while let Some(c) = curr {
-                     if let Some(m) = c.borrow().methods.get(method) {
-                         found_method = Some(m.clone());
-                         break;
-                     }
-                     curr = c.borrow().parent.clone();
-                 }
-                 
-                 if let Some(m) = found_method {
-                      if args.len() != m.params.len() {
-                           return Err(vec![SemanticError::ArgumentCountMismatch(method.clone(), m.params.len(), args.len())]);
-                      }
-                      for (i, arg_expr) in args.iter().enumerate() {
-                           let arg_type = self.check_expr(arg_expr)?;
-                           if !conforms_to(arg_type.clone(), m.params[i].1.clone()) {
-                                return Err(vec![SemanticError::TypeMismatch{ expected: m.params[i].1.borrow().name.clone(), found: arg_type.borrow().name.clone() }]);
-                           }
-                      }
-                      Ok(m.return_type.clone())
-                 } else {
-                     Err(vec![SemanticError::MethodNotFound(format!("Method {} not found in {}", method, t_obj.borrow().name))])
-                 }
-             },
-             Expr::AttributeAccess { obj, attribute } => {
-                 let t_obj = self.check_expr(obj)?;
-                 // Look for attribute in the type hierarchy
-                 let mut curr = Some(t_obj.clone());
-                 while let Some(c) = curr {
-                     if let Some(attr_type) = c.borrow().attributes.get(attribute) {
-                         return Ok(attr_type.clone());
-                     }
-                     curr = c.borrow().parent.clone();
-                 }
-                 // Attribute not found in type info — return Object as fallback
-                 Ok(self.context.get_type("Object").unwrap())
-             },
-             Expr::Is(expr, _type_name) => {
-                 let _ = self.check_expr(expr)?;
-                 Ok(self.context.get_type("Boolean").unwrap())
-             },
-             Expr::As(expr, type_name) => {
-                 let _ = self.check_expr(expr)?;
-                 // Return the target type if known, otherwise Object
-                 Ok(self.context.get_type(type_name).unwrap_or_else(|_| self.context.get_type("Object").unwrap()))
-             },
-             Expr::VectorLiteral(elems) => {
-                 for e in elems {
-                     let _ = self.check_expr(e)?;
-                 }
-                 Ok(self.context.get_type("Object").unwrap())
-             },
-             Expr::VectorGenerator { expr, var, iterable } => {
-                 let _ = self.check_expr(iterable)?;
-                 let gen_scope = Rc::new(Scope::new_child(self.scope.clone()));
-                 gen_scope.define_variable(var.clone(), self.context.get_type("Object").unwrap());
-                 let mut gen_checker = BodyChecker::new(self.context, gen_scope);
-                 let _ = gen_checker.check_expr(expr)?;
-                 Ok(self.context.get_type("Object").unwrap())
-             },
-             Expr::Indexing { obj, index } => {
-                 let _ = self.check_expr(obj)?;
-                 let t_idx = self.check_expr(index)?;
-                 if t_idx.borrow().name != "Number" {
-                     return Err(vec![SemanticError::TypeMismatch{ expected: "Number".to_string(), found: t_idx.borrow().name.clone() }]);
-                 }
-                 Ok(self.context.get_type("Object").unwrap())
-             },
-             Expr::For { var, iterable, body } => {
-                 let _ = self.check_expr(iterable)?;
-                 let for_scope = Rc::new(Scope::new_child(self.scope.clone()));
-                 for_scope.define_variable(var.clone(), self.context.get_type("Object").unwrap());
-                 let mut for_checker = BodyChecker::new(self.context, for_scope);
-                 let _ = for_checker.check_expr(body)?;
-                 Ok(self.context.get_type("Object").unwrap())
-             },
-             Expr::Lambda { params, return_type: _, body } => {
-                 let lambda_scope = Rc::new(Scope::new_child(self.scope.clone()));
-                 for p in params {
-                     let p_type = if let Some(ann) = &p.type_annotation {
-                         self.context.resolve_type(ann).unwrap_or_else(|_| self.context.get_type("Object").unwrap())
-                     } else {
-                         self.context.get_type("Object").unwrap()
-                     };
-                     lambda_scope.define_variable(p.name.clone(), p_type);
-                 }
-                 let mut lambda_checker = BodyChecker::new(self.context, lambda_scope);
-                 let _ = lambda_checker.check_expr(body)?;
-                 Ok(self.context.get_type("Object").unwrap())
-             },
-             Expr::Match { expr, cases, default } => {
-                 let _ = self.check_expr(expr)?;
-                 for case in cases {
-                     let _ = self.check_expr(&case.expr)?;
-                 }
-                 if let Some(d) = default {
-                     let _ = self.check_expr(d)?;
-                 }
-                 Ok(self.context.get_type("Object").unwrap())
-             },
-             Expr::BaseCall { args } => {
-                 for a in args {
-                     let _ = self.check_expr(a)?;
-                 }
-                 Ok(self.context.get_type("Object").unwrap())
-             },
-             
-            _ => Ok(self.context.get_type("Object").unwrap()), 
-        }
-    }
-}
-
-
-fn conforms_to(type_a: Rc<RefCell<Type>>, type_b: Rc<RefCell<Type>>) -> bool {
-    type_a.borrow().conforms_to(&type_b)
 }

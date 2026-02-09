@@ -1,3 +1,5 @@
+mod helpers;
+
 use crate::lexer::Lexer;
 use crate::lexer::tokens::Token;
 use crate::utils::{Position, Spanned};
@@ -5,8 +7,8 @@ use crate::errors::ParseError;
 use crate::ast::nodes::*;
 
 pub struct Parser {
-    tokens: Vec<Result<(Token, Position), crate::errors::LexError>>,
-    current: usize,
+    pub(crate) tokens: Vec<Result<(Token, Position), crate::errors::LexError>>,
+    pub(crate) current: usize,
 }
 
 impl Parser {
@@ -39,94 +41,6 @@ impl Parser {
         }
     }
 
-    /// Avanza y retorna el siguiente token junto con su posición.
-    /// Convierte errores léxicos en `ParseError::Lex`.
-    fn advance(&mut self) -> Result<(Token, Position), ParseError> {
-        if self.current < self.tokens.len() {
-            let res = self.tokens[self.current].clone();
-            match &res {
-                Ok((t, _)) => {
-                    if *t != Token::EOF {
-                        self.current += 1;
-                    }
-                }
-                Err(_) => {
-                    self.current += 1;
-                }
-            }
-            res.map_err(ParseError::Lex)
-        } else {
-            Err(ParseError::UnexpectedEOF(self.peek_pos()))
-        }
-    }
-
-    /// Mira el token actual sin consumirlo.
-    fn peek(&self) -> Option<&Result<(Token, Position), crate::errors::LexError>> {
-        self.tokens.get(self.current)
-    }
-
-    /// Comprueba si el token actual coincide con `token`.
-    fn check(&self, token: &Token) -> bool {
-        match self.peek() {
-            Some(Ok((t, _))) => t == token,
-            _ => false,
-        }
-    }
-
-    /// Si el token actual coincide con `token`, lo consume y devuelve `true`.
-    fn match_token(&mut self, token: &Token) -> bool {
-        if self.check(token) {
-            self.advance().unwrap();
-            true
-        } else {
-            false
-        }
-    }
-
-    /// Consume el token esperado o devuelve un `ParseError` con `message`.
-    fn consume(&mut self, token: &Token, message: &str) -> Result<(Token, Position), ParseError> {
-        match self.peek() {
-            Some(Ok((t, _))) if t == token => self.advance(),
-            Some(Err(_)) => self.advance(),
-            _ => Err(ParseError::UnexpectedToken {
-                expected: message.to_string(),
-                found: format!("{:?}", self.peek().map(|r| match r {
-                    Ok((t, _)) => format!("{:?}", t),
-                    Err(e) => format!("LexError: {:?}", e),
-                })),
-                pos: self.peek_pos(),
-            })
-        }
-    }
-
-    /// Devuelve la posición del token actual o la última posición conocida.
-    fn peek_pos(&self) -> Position {
-        self.tokens.get(self.current)
-            .and_then(|r| r.as_ref().ok())
-            .map(|(_, p)| p.clone())
-            .unwrap_or_else(|| {
-                self.tokens.last()
-                    .and_then(|r| match r {
-                        Ok((_, p)) => Some(p.clone()),
-                        Err(e) => match e {
-                            crate::errors::LexError::UnterminatedString(p) => Some(p.clone()),
-                            crate::errors::LexError::UnterminatedBlockComment(p) => Some(p.clone()),
-                            crate::errors::LexError::UnexpectedCharacter(_, p) => Some(p.clone()),
-                        },
-                    })
-                    .unwrap_or(Position { line: 1, column: 1 })
-            })
-    }
-
-    /// Devuelve una descripción textual del token actual (o del error léxico).
-    fn peek_description(&self) -> String {
-        match self.peek() {
-            Some(Ok((t, _))) => format!("{:?}", t),
-            Some(Err(e)) => format!("LexError: {:?}", e),
-            None => "EOF".to_string(),
-        }
-    }
-
     // --- Análisis principal ---
 
     /// Analiza un programa completo y devuelve el `Program` AST.
@@ -137,21 +51,32 @@ impl Parser {
             declarations.push(self.parse_declaration()?);
         }
 
+        // múltiples expresiones en el programa principal
         let expr = if self.at_end() {
             Spanned::new(Expr::Block(Vec::new()), self.peek_pos())
         } else {
-            let e = self.parse_spanned_expr(Precedence::Lowest)?;
-            self.match_token(&Token::Semicolon);
-            e
+            let start_pos = self.peek_pos();
+            let mut exprs = Vec::new();
+            
+            // Parsear todas las expresiones restantes
+            while !self.at_end() {
+                let e = self.parse_spanned_expr(Precedence::Lowest)?;
+                exprs.push(e);
+                
+                // Consumir semicolon opcional
+                if !self.match_token(&Token::Semicolon) {
+                    break;
+                }
+            }
+            
+            // Si solo hay una expresión, retornarla directamente
+            // Si hay múltiples, crear un bloque implícito
+            if exprs.len() == 1 {
+                exprs.into_iter().next().unwrap()
+            } else {
+                Spanned::new(Expr::Block(exprs), start_pos)
+            }
         };
-
-        if !self.at_end() {
-            return Err(ParseError::UnexpectedToken {
-                expected: "end of file".to_string(),
-                found: self.peek_description(),
-                pos: self.peek_pos(),
-            });
-        }
 
         Ok(Program {
             declarations,
@@ -674,16 +599,6 @@ impl Parser {
         let index = self.parse_spanned_expr(Precedence::Lowest)?;
         self.consume(&Token::RBracket, "Expected ']' after index")?;
         Ok(Spanned::new(Expr::Indexing { obj: Box::new(left), index: Box::new(index) }, pos))
-    }
-
-    /// Indica si se ha alcanzado el final de los tokens (EOF).
-    fn at_end(&self) -> bool {
-        self.current >= self.tokens.len() || matches!(self.tokens[self.current], Ok((Token::EOF, _)))
-    }
-
-    /// Determina si la posición actual pertenece al inicio de una expresión.
-    fn is_expr_start(&self) -> bool {
-        !self.check(&Token::Function) && !self.check(&Token::Type) && !self.check(&Token::Protocol) && !self.check(&Token::Def)
     }
 
     /// Convierte un `Token` de operador en el enum `Op` correspondiente.

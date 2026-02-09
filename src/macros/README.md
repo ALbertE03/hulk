@@ -335,6 +335,19 @@ print(42);
 
 ## Arquitectura
 
+### Estructura del Módulo
+
+El módulo `macros` está organizado en los siguientes archivos:
+
+- **`mod.rs`**: Orquestador principal que expone la función pública `expand_macros()`
+- **`utils.rs`** : Funciones utilitarias como `gensym()` para generación de nombres únicos
+- **`visitors.rs`** : Implementaciones de visitors para la expansión de macros:
+  - `SubstitutionVisitor`: Aplica sustituciones de variables y expresiones
+  - `SanitizationVisitor`: Renombra variables para evitar captura (hygiene)
+  - `MacroExpansionVisitor`: Expande llamadas a macros recursivamente
+- **`context.rs`**: Contexto de expansión y lógica de pattern matching
+- **`tests.rs`**: Suite de tests de macros
+
 ### Estructuras AST
 
 #### `MacroDecl`
@@ -394,7 +407,7 @@ pub enum Pattern {
 └─────────────────────┘
 ```
 
-### `MacroExpansionContext`
+### `MacroExpansionContext` (en `context.rs`)
 
 ```rust
 pub struct MacroExpansionContext {
@@ -405,10 +418,14 @@ pub struct MacroExpansionContext {
 
 **Métodos principales:**
 - `register_macro()`: Registra una definición de macro
-- `expand_program()`: Expande todas las macros en un programa
+- `expand_program()`: Expande todas las macros en un programa (3 fases)
 - `expand_macro_call()`: Expande una llamada específica
-- `sanitize_variables()`: Aplica hygiene
-- `pattern_match()`: Hace pattern matching
+- `sanitize_expr()`: Aplica hygiene a expresiones
+- `pattern_match()`: Hace pattern matching recursivo
+
+### Utilidades (`utils.rs`)
+
+- **`gensym(prefix: &str) -> String`**: Genera nombres únicos con formato `prefix$$N` usando un contador atómico
 
 ---
 

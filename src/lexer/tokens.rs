@@ -76,7 +76,7 @@ pub enum Token {
     Dot,        // .
     Semicolon,  // ;
     Dollar,     // $ (para variable placeholders en macros)
-    // NOTA: @ se tokeniza como Concat, no At
+    // @ se tokeniza como Concat, no At
     // At se usa solo conceptualmente en parsing de macros
 
     // Especial

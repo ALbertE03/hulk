@@ -1,6 +1,8 @@
 use super::*;
 use crate::ast::nodes::*;
 use crate::parser::Parser;
+use crate::utils::{Position, Spanned};
+use super::utils::gensym;
 
 // Helper para crear Spanned 
 fn span<T>(node: T, line: usize, column: usize) -> Spanned<T> {

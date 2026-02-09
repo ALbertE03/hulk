@@ -35,18 +35,40 @@ El parser es la **segunda fase del compilador**. Recibe un flujo de tokens del l
 
 ## Arquitectura
 
+### Estructura del Módulo
+
+El módulo `parser` está organizado en los siguientes archivos:
+
+- **`mod.rs`**: Parser principal con Pratt parsing y lógica de análisis sintáctico
+- **`helpers.rs`**: Funciones auxiliares para manipulación de tokens
+- **`tests.rs`**: Suite de tests del parser
+
 ### Estructura Principal
 
 ```rust
 pub struct Parser {
-    tokens: Vec<Result<(Token, Position), LexError>>,  // Todos los tokens del lexer
-    current: usize,                                     // Índice del token actual
+    pub(crate) tokens: Vec<Result<(Token, Position), LexError>>,  // Todos los tokens del lexer
+    pub(crate) current: usize,                                     // Índice del token actual
 }
 ```
 
 El parser almacena:
 - **`tokens`**: Vector completo de tokens (eager loading)
 - **`current`**: Puntero al token que se está procesando
+
+### Módulo `helpers.rs`
+
+Contiene funciones auxiliares con visibilidad `pub(super)` para uso interno del parser:
+
+- **`advance()`**: Avanza al siguiente token
+- **`peek()`**: Mira el token actual sin consumirlo
+- **`check()`**: Verifica si el token actual es de cierto tipo
+- **`match_token()`**: Verifica y consume si coincide
+- **`consume()`**: Consume un token esperado o retorna error
+- **`peek_pos()`**: Obtiene la posición del token actual
+- **`peek_description()`**: Descripción del token para mensajes de error
+- **`at_end()`**: Verifica si llegamos al final
+- **`is_expr_start()`**: Determina si un token puede iniciar una expresión
 
 **Ventajas:**
 - Fácil implementación de peek/lookahead

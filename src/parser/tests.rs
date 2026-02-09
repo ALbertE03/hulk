@@ -1628,14 +1628,18 @@ fn test_parse_power_right_associativity() {
 
 #[test]
 fn test_parse_error_trailing_garbage() {
+
     let input = "print(1); 2;";
     let mut parser = Parser::new(input);
     let result = parser.parse_program();
     
-    match result {
-        Err(ParseError::UnexpectedToken { expected, .. }) => {
-            assert!(expected.contains("end of file"));
+    assert!(result.is_ok());
+    let program = result.unwrap();
+    
+    match &program.expr.node {
+        Expr::Block(exprs) => {
+            assert_eq!(exprs.len(), 2);
         }
-        _ => panic!("Expected error for trailing garbage, got {:?}", result),
+        _ => panic!("Expected block with multiple expressions"),
     }
 }

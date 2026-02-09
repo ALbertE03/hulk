@@ -175,30 +175,37 @@ hulk-compiler/
 │   │   ├── mod.rs           # Re-exports
 │   │   ├── nodes.rs         # Todos los nodos: Expr, Declaration, Program...
 │   │   ├── display.rs       # Pretty-printing del AST
-│   │   ├── optimize.rs      # Optimizador multi-pasada (~470 líneas)
+│   │   ├── optimize.rs      # Optimizador multi-pasada 
 │   │   └── README.md
 │   ├── lexer/               # Fase 2: Análisis léxico
-│   │   ├── mod.rs           # Lexer principal (~766 líneas)
+│   │   ├── mod.rs           # Lexer principal 
 │   │   ├── tokens.rs        # Definición de Token y TokenKind
 │   │   ├── tests.rs         # Tests del lexer
 │   │   └── README.md
 │   ├── parser/              # Fase 3: Análisis sintáctico
-│   │   ├── mod.rs           # Parser Pratt (~1,641 líneas)
+│   │   ├── mod.rs           # Parser Pratt 
+│   │   ├── helpers.rs       # Funciones auxiliares para parsing 
 │   │   ├── tests.rs         # Tests del parser
 │   │   └── README.md
 │   ├── macros/              # Fase 4: Expansión de macros
-│   │   ├── mod.rs           # Motor de macros (~543 líneas)
+│   │   ├── mod.rs           # Orquestador principal 
+│   │   ├── utils.rs         # Utilidades (gensym) 
+│   │   ├── visitors.rs      # Visitors para expansión 
+│   │   ├── context.rs       # Contexto de expansión 
+│   │   ├── tests.rs         # Tests de macros
 │   │   └── README.md
 │   ├── semantic/            # Fase 5: Análisis semántico
-│   │   ├── mod.rs           # 4 pasadas de análisis (~350 líneas)
-│   │   ├── types.rs         # Sistema de tipos (~175 líneas)
-│   │   ├── scope.rs         # Tabla de símbolos
+│   │   ├── mod.rs           # Orquestador principal 
+│   │   ├── context.rs       # Contexto semántico 
+│   │   ├── visitor.rs       # Visitor de análisis semántico 
+│   │   ├── types.rs         # Sistema de tipos
+│   │   ├── tests.rs         # Tests semánticos
 │   │   └── README.md
 │   ├── codegen/             # Fase 6: Generación de código LLVM IR
 │   │   ├── mod.rs           # Trait CodeGenerator + re-exports
-│   │   ├── llvm_target.rs   # Backend LLVM IR (~1,512 líneas)
-│   │   ├── tests.rs         # Tests básicos (26 tests)
-│   │   ├── extra_tests.rs   # Tests avanzados (29 tests)
+│   │   ├── llvm_target.rs   # Backend LLVM IR 
+│   │   ├── tests.rs         # Tests básicos 
+│   │   ├── extra_tests.rs   # Tests avanzados 
 │   │   └── README.md
 │   ├── errors/              # Manejo de errores
 │   │   ├── mod.rs
@@ -236,13 +243,15 @@ Esta sección describe paso a paso cómo extender el compilador HULK con nuevas 
 Para agregar cualquier funcionalidad nueva, se deben tocar (en orden):
 
 1. **AST** (`src/ast/nodes.rs`) — Definir la nueva estructura en el árbol
-2. **Display** (`src/ast/display.rs`) — Pretty-printing para debugging
+2. **Display Visitor** (`src/ast/display.rs`) — Implementar `Display` para el nuevo nodo (visitor pattern)
 3. **Lexer** (`src/lexer/`) — Si hay nueva sintaxis (tokens nuevos)
-4. **Parser** (`src/parser/mod.rs`) — Parsear la nueva sintaxis al AST
-5. **Semántico** (`src/semantic/mod.rs`, `types.rs`) — Validar tipos y reglas
-6. **Optimizador** (`src/ast/optimize.rs`) — Aplicar optimizaciones (si aplica)
-7. **Codegen** (`src/codegen/llvm_target.rs`) — Generar LLVM IR
-8. **Tests** — En cada módulo afectado
+4. **Parser** (`src/parser/mod.rs`, `helpers.rs`) — Parsear la sintaxis al AST
+5. **Semantic Visitor** (`src/semantic/visitor.rs`) — Agregar caso en `BodyChecker::check_expr()` o `check_type()`
+6. **Types** (`src/semantic/types.rs`) — Si defines un nuevo tipo
+7. **Macro Visitors** (`src/macros/visitors.rs`) — Si las macros necesitan procesar el nuevo nodo (SubstitutionVisitor, SanitizationVisitor, MacroExpansionVisitor)
+8. **Optimizer Visitor** (`src/ast/optimize.rs`) — Agregar caso en `optimize_expr()` (si aplica)
+9. **Codegen** (`src/codegen/llvm_target.rs`) — Agregar caso en `emit_expr()` o la función correspondiente
+10. **Tests** — En cada módulo afectado
 
 ### Ejemplo 1: Agregar un Nuevo Operador Binario
 
@@ -259,9 +268,9 @@ pub enum Op {
 }
 ```
 
-#### Paso 2: Display — Mostrar el operador
+#### Paso 2: Display Visitor — Mostrar el operador
 
-En `src/ast/display.rs`, agregar el caso en el `Display` de `Op`:
+En `src/ast/display.rs`, agregar el caso en el `Display` de `Op` (este archivo implementa el visitor pattern para pretty-printing):
 ```rust
 Op::Shl => write!(f, "<<"),
 ```
@@ -291,9 +300,9 @@ En `src/parser/mod.rs`, en la tabla de precedencias (Pratt parsing):
 TokenKind::Shl => Some((Precedence::Shift, Op::Shl)),
 ```
 
-#### Paso 5: Semántico — Validar tipos
+#### Paso 5: Semantic Visitor — Validar tipos
 
-En `src/semantic/mod.rs`, en el visitor de `Expr::Binary`:
+En `src/semantic/visitor.rs`, en el método `BodyChecker::check_expr()`, dentro del match de `Expr::Binary`, agregar el caso:
 ```rust
 Op::Shl => {
     self.expect_type(&left_type, &Type::number());
@@ -302,9 +311,9 @@ Op::Shl => {
 }
 ```
 
-#### Paso 6: Optimizador (opcional)
+#### Paso 6: Optimizer Visitor (opcional)
 
-En `src/ast/optimize.rs`, agregar folding:
+En `src/ast/optimize.rs`, en la función `optimize_expr()` (que implementa visitor pattern), agregar constant folding:
 ```rust
 (Expr::Number(a), Op::Shl, Expr::Number(b)) => {
     Expr::Number(((a as i64) << (b as i64)) as f64)
@@ -356,9 +365,9 @@ pub enum Expr {
 }
 ```
 
-#### Paso 2: Display
+#### Paso 2: Display Visitor
 
-En `src/ast/display.rs`:
+En `src/ast/display.rs`, agregar caso al match de `Expr`:
 ```rust
 Expr::Abs(x) => write!(f, "abs({})", x.node),
 ```
@@ -374,9 +383,9 @@ En `src/parser/mod.rs`, donde se parsean llamadas a funciones:
 }
 ```
 
-#### Paso 4: Semántico
+#### Paso 4: Semantic Visitor
 
-En `src/semantic/mod.rs`:
+En `src/semantic/visitor.rs`, en `BodyChecker::check_expr()`, agregar caso:
 ```rust
 Expr::Abs(x) => {
     let t = self.check_expr(x)?;
@@ -385,9 +394,9 @@ Expr::Abs(x) => {
 }
 ```
 
-#### Paso 5: Optimizador
+#### Paso 5: Optimizer Visitor
 
-En `src/ast/optimize.rs`:
+En `src/ast/optimize.rs`, en `optimize_expr()`, agregar caso:
 ```rust
 Expr::Abs(x) => {
     let opt_x = optimize_expr(*x, interner, env);
@@ -399,9 +408,9 @@ Expr::Abs(x) => {
 }
 ```
 
-#### Paso 6: Codegen
+#### Paso 6: Codegen Visitor
 
-En `src/codegen/llvm_target.rs`:
+En `src/codegen/llvm_target.rs`, en `LlvmGenerator::emit_expr()`, agregar caso:
 ```rust
 Expr::Abs(x) => {
     let xv = self.emit_expr(x, out, ctx);
@@ -422,10 +431,13 @@ declarations.push("declare double @llvm.fabs.f64(double)");
 
 Supongamos que quieres agregar `enum`.
 
-1. **AST**: Crear `EnumDecl` en `nodes.rs`, agregar `Declaration::Enum(EnumDecl)`
-2. **Parser**: Parsear `enum Color { Red, Green, Blue }` en `parse_declaration()`
-3. **Semántico**: Registrar el enum como tipo, validar variantes en pasada 1
-4. **Codegen**: Asignar un `double` numérico a cada variante (0.0, 1.0, 2.0...)
+1. **AST**: Crear `EnumDecl` en `src/ast/nodes.rs`, agregar `Declaration::Enum(EnumDecl)`
+2. **Parser**: Parsear `enum Color { Red, Green, Blue }` en `src/parser/mod.rs` → función `parse_declaration()`
+3. **Semántico**: 
+   - En `src/semantic/mod.rs` → Pasada 1: Registrar el enum como tipo en el `Context`
+   - En `src/semantic/types.rs` → Agregar variante `Enum` al `TypeKind` si es necesario
+   - En `src/semantic/visitor.rs` → Validar uso de variantes del enum
+4. **Codegen**: En `src/codegen/llvm_target.rs` → Asignar un `double` numérico a cada variante (0.0, 1.0, 2.0...)
 5. **Tests**: Verificar declaración, uso en match, comparación
 
 ---
@@ -449,52 +461,59 @@ Expr::Binary(left, Op::Mul, right) => {
 }
 ```
 
-2. **IMPORTANTE**: Si la optimización altera variables que podrían ser mutadas con `:=`, usar `collect_assigned_vars()` para obtener el set de variables mutables y excluirlas de la transformación:
+2. **IMPORTANTE**: Si la optimización afecta variables que podrían ser mutadas con `:=`, usar `collect_assigned_vars()` (también en `optimize.rs`) para obtener el conjunto de variables mutables y excluirlas de la transformación:
 ```rust
 let mut mutated = HashSet::new();
 collect_assigned_vars(&body.node, &mut mutated);
-// No optimizar variables en `mutated`
+// No optimizar variables en `mutated` - son mutables
 ```
+
+---
+
+### Ejemplo 5: Extender el Sistema de Macros
+
+Supongamos que quieres agregar un nuevo tipo de parámetro de macro (ej: `&` para referencias).
+
+1. **AST**: En `src/ast/nodes.rs`, agregar variante a `MacroParam`:
+```rust
+pub enum MacroParam {
+    Normal { name: String, type_annotation: TypeAnnotation },
+    Symbolic { name: String, type_annotation: TypeAnnotation },  // @
+    Placeholder { name: String, type_annotation: TypeAnnotation }, // $
+    Body { name: String, type_annotation: TypeAnnotation },       // *
+    Reference { name: String, type_annotation: TypeAnnotation },  // & ← NUEVO
+}
+```
+
+2. **Parser**: En `src/parser/mod.rs`, en `parse_macro_param()`, reconocer el prefijo `&`
+
+3. **Expansión**: En `src/macros/context.rs`:
+   - Modificar `expand_macro_call()` para manejar parámetros de tipo `Reference`
+   - Actualizar la lógica de sustitución si es necesario
+
+4. **Visitors**: En `src/macros/visitors.rs`, actualizar los visitors si necesitan comportamiento especial para referencias
+
+5. **Tests**: En `src/macros/tests.rs`, agregar casos que usen el nuevo tipo de parámetro
 
 ---
 
 ### Checklist para Nuevas Funcionalidades
 
-- [ ] Definir nodo AST en `nodes.rs`
-- [ ] Implementar `Display` en `display.rs`
-- [ ] Agregar token(s) en `tokens.rs` (si hay nueva sintaxis)
-- [ ] Parsear en `parser/mod.rs`
-- [ ] Validar en `semantic/mod.rs` y/o `types.rs`
-- [ ] Optimizar en `ast/optimize.rs` (si aplica)
-- [ ] Generar LLVM IR en `codegen/llvm_target.rs`
-- [ ] Agregar tests en el módulo correspondiente
-- [ ] Verificar que los 169+ tests existentes siguen pasando (`cargo test`)
+Al agregar una nueva característica al lenguaje, asegúrate de tocar todos los **visitors** necesarios:
 
----
+- [ ] **AST**: Definir nodo en `ast/nodes.rs`
+- [ ] **Display Visitor**: Implementar en `ast/display.rs` → agregar caso al match correspondiente
+- [ ] **Lexer**: Agregar token(s) en `lexer/tokens.rs` (si hay nueva sintaxis)
+- [ ] **Parser**: Parsear en `parser/mod.rs` (usar `helpers.rs` si necesitas utilidades)
+- [ ] **Semantic Visitor**: Agregar caso en `semantic/visitor.rs` → `BodyChecker::check_expr()` o método correspondiente
+- [ ] **Types**: Actualizar `semantic/types.rs` si defines un nuevo tipo
+- [ ] **Macro Visitors**: Actualizar `macros/visitors.rs` si las macros deben procesar el nuevo nodo:
+  - `SubstitutionVisitor`: Para sustituciones de variables/expresiones
+  - `SanitizationVisitor`: Para renombrado higiénico
+  - `MacroExpansionVisitor`: Para expansión recursiva
+- [ ] **Optimizer Visitor**: Agregar caso en `ast/optimize.rs` → `optimize_expr()` (si aplica)
+- [ ] **Codegen Visitor**: Agregar caso en `codegen/llvm_target.rs` → `emit_expr()` o función correspondiente
+- [ ] **Tests**: Agregar tests en cada módulo afectado
+- [ ] **Verificación**: Ejecutar `cargo test` para confirmar que todos los tests pasan
 
-### Arquitectura Clave del Codegen
-
-El trait central es:
-
-```rust
-pub trait CodeGenerator {
-    fn generate(&self, program: &Program, context: &Context) -> String;
-}
-```
-
-`LlvmGenerator` implementa este trait. Las funciones internas principales son:
-
-| Función | Propósito |
-|---------|-----------|
-| `emit_expr()` | Genera IR para cualquier expresión (recursivo) |
-| `emit_class()` | Genera struct, constructor y métodos de una clase |
-| `emit_fn()` | Genera una función LLVM |
-| `collect_free_vars()` | Detecta variables libres para closures |
-| `collect_assigned_vars()` | Detecta variables mutadas con `:=` (para el optimizador) |
-| `class_inherits_from()` | Verifica herencia para `is`/`as` |
-| `mangle_fn()` | Renombra `main` → `__hulk_main` para evitar colisión con `@main` de C |
-| `fmt_double()` | Formatea doubles válidos para LLVM IR (siempre con punto decimal) |
-| `emit_gc_sweep_fn()` | Genera la función de barrido del GC |
-  - Análisis de flujo de datos para constant propagation
-
----
+> **💡 Nota sobre Visitors**: El compilador usa el patrón **Visitor** extensivamente. Casi cada fase (display, semantic, macros, optimizer, codegen) implementa un visitor que recorre el AST. Cuando agregas un nuevo nodo al AST, debes actualizar **todos** los visitors relevantes para que sepan cómo procesarlo.

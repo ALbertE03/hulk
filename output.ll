@@ -37,6 +37,8 @@ declare double @llvm.floor.f64(double)
 @.gc_len   = global i64 0
 @.gc_cap   = global i64 0
 
+@.slit_0 = private unnamed_addr constant [14 x i8] c"¡Hola Mundo!\00"
+@.slit_7 = private unnamed_addr constant [23 x i8] c"Bienvenido a HULK 💚\00"
 
 define void @__hulk_gc_track(i8* %ptr) {
 entry:
@@ -156,25 +158,22 @@ entry:
 
 define i32 @main() {
 entry:
-  %t0 = alloca double
-  store double 1.0e1, double* %t0
-  %t1 = alloca double
-  store double 1.0e1, double* %t1
-  br label %wcond_2
-wcond_2:
-  %t5 = load double, double* %t1
-  %t7 = fcmp oge double %t5, 0.0e0
-  %t6 = uitofp i1 %t7 to double
-  %t8 = fcmp one double %t6, 0.0
-  br i1 %t8, label %wbody_3, label %wend_4
-wbody_3:
-  %t9 = load double, double* %t1
-  %t10 = fsub double %t9, 1.0e0
-  store double %t10, double* %t1
-  call i32 (i8*, ...) @printf(i8* getelementptr inbounds ([5 x i8], [5 x i8]* @.fmt_num, i64 0, i64 0), double 1.0e1)
-  call i32 @puts(i8* getelementptr inbounds ([1 x i8], [1 x i8]* @.empty_s, i64 0, i64 0))
-  br label %wcond_2
-wend_4:
+  %t1 = ptrtoint i8* getelementptr inbounds ([14 x i8], [14 x i8]* @.slit_0, i64 0, i64 0) to i64
+  %t2 = bitcast i64 %t1 to double
+  %t3 = bitcast double %t2 to i64
+  %t4 = alloca i64
+  store i64 %t3, i64* %t4
+  %t5 = load i64, i64* %t4
+  %t6 = inttoptr i64 %t5 to i8*
+  call i32 @puts(i8* %t6)
+  %t8 = ptrtoint i8* getelementptr inbounds ([23 x i8], [23 x i8]* @.slit_7, i64 0, i64 0) to i64
+  %t9 = bitcast i64 %t8 to double
+  %t10 = bitcast double %t9 to i64
+  %t11 = alloca i64
+  store i64 %t10, i64* %t11
+  %t12 = load i64, i64* %t11
+  %t13 = inttoptr i64 %t12 to i8*
+  call i32 @puts(i8* %t13)
   call void @__hulk_gc_sweep()
   ret i32 0
 }
