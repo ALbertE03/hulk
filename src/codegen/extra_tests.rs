@@ -203,7 +203,7 @@ fn test_full_program_with_function_and_print() {
 fn test_comparison_produces_uitofp() {
     let code = compile("print(5 <= 10);");
     assert!(code.contains("fcmp ole"));
-    assert!(code.contains("uitofp i1"));
+    assert!(code.contains("select i1"));
 }
 
 #[test]

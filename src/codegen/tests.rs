@@ -119,7 +119,7 @@ fn test_generate_nested_arithmetic() {
 fn test_generate_comparison_eq() {
     let code = generate_code("print(1 == 1);");
     assert!(code.contains("fcmp oeq"));
-    assert!(code.contains("uitofp i1"));
+    assert!(code.contains("select i1"));
 }
 
 #[test]
@@ -152,7 +152,7 @@ fn test_generate_negation() {
 fn test_generate_not() {
     let code = generate_code("print(!true);");
     assert!(code.contains("fcmp oeq double"));
-    assert!(code.contains("uitofp"));
+    assert!(code.contains("select"));
 }
 
 // ── String concatenation tests ──────────────────────────────────────────

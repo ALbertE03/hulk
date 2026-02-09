@@ -79,19 +79,19 @@ pub fn gen_expr(ctx: &mut Ctx, expr: &Spanned<Expr>) -> String {
                     };
                     let c = ctx.tmp();
                     ctx.emit(&format!("{} = fcmp {} double {}, {}", c, pred, l, r));
-                    ctx.emit(&format!("{} = uitofp i1 {} to double", res, c));
+                    ctx.emit(&format!("{} = select i1 {}, double 1.0, double 0.0", res, c));
                 }
                 Op::And => {
                     let lb = ctx.tmp(); ctx.emit(&format!("{} = fcmp one double {}, 0.0", lb, l));
                     let rb = ctx.tmp(); ctx.emit(&format!("{} = fcmp one double {}, 0.0", rb, r));
                     let ab = ctx.tmp(); ctx.emit(&format!("{} = and i1 {}, {}", ab, lb, rb));
-                    ctx.emit(&format!("{} = uitofp i1 {} to double", res, ab));
+                    ctx.emit(&format!("{} = select i1 {}, double 1.0, double 0.0", res, ab));
                 }
                 Op::Or => {
                     let lb = ctx.tmp(); ctx.emit(&format!("{} = fcmp one double {}, 0.0", lb, l));
                     let rb = ctx.tmp(); ctx.emit(&format!("{} = fcmp one double {}, 0.0", rb, r));
                     let ob = ctx.tmp(); ctx.emit(&format!("{} = or i1 {}, {}", ob, lb, rb));
-                    ctx.emit(&format!("{} = uitofp i1 {} to double", res, ob));
+                    ctx.emit(&format!("{} = select i1 {}, double 1.0, double 0.0", res, ob));
                 }
                 Op::Concat | Op::ConcatSpace => {
                     // Convertir cada operando a puntero i8* de cadena.
@@ -115,8 +115,7 @@ pub fn gen_expr(ctx: &mut Ctx, expr: &Spanned<Expr>) -> String {
                     }
                     ctx.emit(&format!("call i8* @strcat(i8* {}, i8* {})", buf, rp));
 
-                    let pi = ctx.tmp(); ctx.emit(&format!("{} = ptrtoint i8* {} to i64", pi, buf));
-                    ctx.emit(&format!("{} = bitcast i64 {} to double", res, pi));
+                    ctx.emit(&format!("{} = bitcast i8* {} to double", res, buf));
                 }
             }
             res
@@ -131,7 +130,7 @@ pub fn gen_expr(ctx: &mut Ctx, expr: &Spanned<Expr>) -> String {
                 UnOp::Not => {
                     let c = ctx.tmp();
                     ctx.emit(&format!("{} = fcmp oeq double {}, 0.0", c, v));
-                    ctx.emit(&format!("{} = uitofp i1 {} to double", res, c));
+                    ctx.emit(&format!("{} = select i1 {}, double 1.0, double 0.0", res, c));
                 }
             }
             res
@@ -684,27 +683,17 @@ pub fn gen_expr(ctx: &mut Ctx, expr: &Spanned<Expr>) -> String {
                 let op = ctx.decode_ptr(&v, "i64*");
                 let tid = ctx.tmp(); ctx.emit(&format!("{} = load i64, i64* {}", tid, op));
 
-                // Verificar si tid coincide con algún id válido
-                let res_ptr = ctx.tmp();
-                ctx.emit(&format!("{} = alloca double", res_ptr));
-                ctx.emit(&format!("store double 0.0, double* {}", res_ptr));
-
+                // Verificar si tid coincide con algún id válido usando select acumulativo
+                let mut current = "0.0".to_string();
                 for vid in &valid_ids {
                     let c = ctx.tmp();
                     ctx.emit(&format!("{} = icmp eq i64 {}, {}", c, tid, vid));
-                    let match_lbl = ctx.lbl("is_match");
-                    let next_lbl = ctx.lbl("is_next");
-                    ctx.emit(&format!("br i1 {}, label %{}, label %{}", c, match_lbl, next_lbl));
-                    ctx.emit_label(&match_lbl);
-                    ctx.emit(&format!("store double 1.0, double* {}", res_ptr));
-                    // No podemos hacer break fácilmente, pero sobreescribir con 1.0 está bien
-                    ctx.emit(&format!("br label %{}", next_lbl));
-                    ctx.emit_label(&next_lbl);
+                    let next = ctx.tmp();
+                    ctx.emit(&format!("{} = select i1 {}, double 1.0, double {}", next, c, current));
+                    current = next;
                 }
 
-                let r = ctx.tmp();
-                ctx.emit(&format!("{} = load double, double* {}", r, res_ptr));
-                r
+                current
             } else {
                 // Tipo no encontrado en clases – verificar primitivos
                 // Para Number/Boolean/String no podemos verificar en runtime (todo es double)
