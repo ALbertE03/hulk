@@ -2,6 +2,8 @@
 
 Este módulo implementa la fase de análisis semántico del compilador HULK. Su objetivo es validar que el programa cumple con las reglas del lenguaje, incluyendo verificación de tipos, resolución de nombres (scope) y comprobaciones de herencia.
 
+> **Integración con Codegen**: La información de tipos recolectada aquí es utilizada por el generador de código para optimizaciones como inferencia de tipos en expresiones y evitar conversiones innecesarias.
+
 ## Estructura del Módulo
 
 El módulo `semantic` está organizado en los siguientes archivos:

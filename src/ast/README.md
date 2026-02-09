@@ -2,6 +2,8 @@
 
 Este módulo define la estructura del Árbol de Sintaxis Abstracta (AST) para el compilador del lenguaje Hulk.
 
+> **Nota**: El AST se utiliza en el backend de generación de código con inferencia de tipos para optimizar conversiones innecesarias. Ver `src/codegen/expressions.rs` para detalles de cómo se infieren tipos en tiempo de compilación.
+
 ## Índice
 - [Estructura del Programa](#estructura-del-programa)
 - [Declaraciones](#declaraciones-declaration)

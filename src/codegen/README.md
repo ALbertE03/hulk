@@ -4,6 +4,23 @@ Este módulo traduce el AST de HULK a **LLVM IR** (Intermediate Representation),
 
 ## Arquitectura del Backend
 
+### Estructura Modular
+
+El generador de código está organizado en módulos especializados:
+
+- **`llvm_target.rs`** (51 líneas): Orquestación principal del proceso de generación
+- **`context.rs`** (153 líneas): Gestión del contexto de generación y layouts de clases
+- **`utils.rs`** (50 líneas): Funciones utilitarias y tipos auxiliares
+- **`classes.rs`** (273 líneas): Generación de código para clases y herencia
+- **`functions.rs`** (173 líneas): Emisión de funciones, macros y helpers
+- **`expressions.rs`** (1423 líneas): Generación de código para todas las expresiones
+
+Beneficios:
+- ✅ Separación clara de responsabilidades
+- ✅ Más fácil de mantener y extender
+- ✅ Compilación incremental más rápida
+- ✅ Reducción del 97.7% en el archivo principal
+
 ### Estrategia de Tipos
 | HULK Type  | LLVM IR Type | Notas                                         |
 |------------|-------------|-----------------------------------------------|
@@ -31,10 +48,11 @@ Este módulo traduce el AST de HULK a **LLVM IR** (Intermediate Representation),
 - Potencia: `@llvm.pow.f64` (intrínseco LLVM)
 - Negación: `fneg`
 
-### 2. Comparaciones y Lógica
-- Comparaciones: `fcmp oeq/one/olt/ogt/ole/oge` → `uitofp i1 to double`
-- AND / OR: Conversión a `i1`, operación `and`/`or`, reconversión a `double`
-- NOT: `fcmp oeq` contra `0.0`
+### 2. Comparaciones y Lógica (Optimizado)
+- Comparaciones: `fcmp oeq/one/olt/ogt/ole/oge` → `select i1 %c, double 1.0, double 0.0`
+- AND / OR: Conversión a `i1`, operación `and`/`or`, `select` para resultado
+- NOT: `fcmp oeq` contra `0.0` → `select` para resultado
+- **Optimización**: Uso de `select` en lugar de `uitofp` elimina conversiones innecesarias y genera código más eficiente
 
 ### 3. Strings
 - Literales: Almacenados como constantes globales `@.slit_N`
@@ -75,8 +93,9 @@ Este módulo traduce el AST de HULK a **LLVM IR** (Intermediate Representation),
 - **Attribute access**: Decode objeto → `bitcast` a struct → `getelementptr` → `load`
 - **Herencia profunda**: Los atributos del padre se prependen al struct del hijo (orden topológico). Soporta cadenas de herencia de 3+ niveles.
 - **`base()` calls**: Llama al constructor del tipo padre con los argumentos dados
-- **`is` operator**: Lee el `type_id` del slot 0 del objeto y compara con el id del tipo objetivo + todos sus descendientes
+- **`is` operator**: Lee el `type_id` del slot 0 del objeto y compara con el id del tipo objetivo + todos sus descendientes usando `select` acumulativo (sin branches)
 - **`as` operator**: Verifica el `type_id` en runtime; si no coincide, imprime error y llama a `@abort()`
+- **Optimización `is`**: Usa `select` encadenado en lugar de branches/stores, reduciendo overhead de control de flujo
 
 ### 8. Vectores
 - **Literales**: `[1, 2, 3]` → `malloc` buffer `[len, e0, e1, e2]`
@@ -133,6 +152,8 @@ declare void @abort()
 | `fmt_double(f64)` | Formatea doubles válidos para LLVM IR (siempre con punto decimal, ej: `1.0e1` en vez de `1e1`) |
 | `collect_free_vars()` | Detecta variables libres en lambdas para captura en closures |
 | `class_inherits_from()` | Verifica cadena de herencia para operadores `is`/`as` |
+| `expr_type_hint()` | Infiere el tipo de una expresión para evitar conversiones innecesarias |
+| `gen_to_str_ptr()` | Convierte valores a string usando hints de tipo para optimización |
 
 ## Tests
 

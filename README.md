@@ -2,6 +2,7 @@
 
 Compilador completo para el lenguaje de programación **HULK**, implementado en Rust. Genera **LLVM IR** que puede compilarse a código nativo para cualquier arquitectura soportada (x86, ARM, RISC-V, etc.). El proyecto cubre todas las fases clásicas de un compilador moderno: análisis léxico, análisis sintáctico, construcción del AST, expansión de macros, análisis semántico, optimización y generación de código LLVM IR.
 
+
 ---
 
 ## Fases del Compilador
