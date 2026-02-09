@@ -376,46 +376,6 @@ fn test_vector_indexing_bounds_check() {
     assert!(code.contains("@.oob_msg"));
 }
 
-// ── 7. GC tracking ─────────────────────────────────────────────────────
-
-#[test]
-fn test_gc_track_called_on_malloc() {
-    let code = compile_no_sem(
-        "type Foo(x: Number) { x = x; }
-         let f = new Foo(1) in print(42);"
-    );
-    println!("{}", code);
-    // Every malloc should be tracked
-    assert!(code.contains("call void @__hulk_gc_track(i8*"));
-}
-
-#[test]
-fn test_gc_sweep_at_exit() {
-    let code = compile("print(42);");
-    println!("{}", code);
-    // Should call sweep in main before ret
-    assert!(code.contains("call void @__hulk_gc_sweep()"));
-    // Should define the sweep function
-    assert!(code.contains("define void @__hulk_gc_sweep()"));
-}
-
-#[test]
-fn test_gc_sweep_frees_all() {
-    let code = compile("print(42);");
-    // The sweep function should iterate and call free
-    assert!(code.contains("define void @__hulk_gc_sweep()"));
-    assert!(code.contains("call void @free(i8*"));
-}
-
-#[test]
-fn test_gc_global_tracking_buffer() {
-    let code = compile("print(42);");
-    // Growable GC buffer globals
-    assert!(code.contains("@.gc_buf"));
-    assert!(code.contains("@.gc_len"));
-    assert!(code.contains("@.gc_cap"));
-}
-
 // ── Type-id in objects ──────────────────────────────────────────────────
 
 #[test]

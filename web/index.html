@@ -1643,9 +1643,15 @@ function factorial(n: Number): Number =>
     if (n <= 1) 1
     else n * factorial(n - 1);
 
-function fibonacci(n: Number): Number =>
-    if (n <= 1) n
-    else fibonacci(n - 1) + fibonacci(n - 2);
+// función con {}
+function fibonacci(n:Number){
+    if (n <= 1) {
+        n
+    }
+    else {
+    fibonacci(n - 1) + fibonacci(n - 2);
+}
+}
 
 {
     print("factorial(5) =" @@ factorial(5));
@@ -1653,18 +1659,22 @@ function fibonacci(n: Number): Number =>
     print("fibonacci(10) =" @@ fibonacci(10));
     print("fibonacci(15) =" @@ fibonacci(15));
 }
+
 `,
 
 strings: `// @ concatena cadenas, @@ concatena con espacio
 {
     let nombre = "HULK" in
     let version = "1.0" in {
-        print("Lenguaje: " @ nombre @ " v" @ version);
+        print("Lenguaje:"@nombre@"v"@version);
+        print("Lenguaje:"@@nombre@@"v"@@version);
         print("Hola" @@ "Mundo");
+        print("Hola" @ "Mundo");
         print("2 + 3 =" @@ (2 + 3));
         print("PI =" @@ 3.14159);
     };
 }
+
 `,
 
 conditionals: `// if / elif / else como expresiones
@@ -1736,7 +1746,8 @@ let luna = new Cat("Luna") in {
 }
 `,
 
-iterables: `// Protocolo Iterable con tipo Range
+iterables: `
+// Protocolo Iterable con tipo Range
 type Range(min: Number, max: Number) {
     min: Number = min;
     max: Number = max;
@@ -1751,21 +1762,18 @@ type Range(min: Number, max: Number) {
 function range(min: Number, max: Number): Range =>
     new Range(min, max);
 
-// For loop — se transpila a while(iter.next())
 {
     print("Contando del 1 al 5:");
-    for (x in range(1, 6))
+    
+    let sum = 0 in {
+    for (x in range(1, 6)){
         print("  →" @@ x);
+        sum := sum+x;
+    }
+    print("Suma 1..5 =" @@ sum);}
 
-    // Sumatoria con while
-    let sum = 0 in
-    let r = range(1, 101) in {
-        while (r.next())
-            let n = r.get_current() in
-                sum := sum + n;
-        print("Suma 1..100 =" @@ sum);
-    };
 }
+
 `,
 
 demo: `// ════════ HULK Demo Completo ════════

@@ -32,133 +32,11 @@ declare double @llvm.floor.f64(double)
 @.oob_msg  = private unnamed_addr constant [36 x i8] c"Runtime error: index out of bounds\0A\00"
 @.rand_seeded = global i1 false
 
-; Rastreo GC: arreglo creciente de punteros i8*
-@.gc_buf   = global i8** null
-@.gc_len   = global i64 0
-@.gc_cap   = global i64 0
-
-@.slit_0 = private unnamed_addr constant [14 x i8] c"¡Hola Mundo!\00"
-@.slit_7 = private unnamed_addr constant [23 x i8] c"Bienvenido a HULK 💚\00"
-
-define void @__hulk_gc_track(i8* %ptr) {
-entry:
-  %len = load i64, i64* @.gc_len
-  %cap = load i64, i64* @.gc_cap
-  %need_grow = icmp sge i64 %len, %cap
-  br i1 %need_grow, label %grow, label %store
-
-grow:
-  %new_cap_base = mul i64 %cap, 2
-  %new_cap_min  = add i64 %new_cap_base, 16
-  %new_cap = select i1 %need_grow, i64 %new_cap_min, i64 %new_cap_base
-  %byte_sz = mul i64 %new_cap, 8
-  %old_buf = load i8**, i8*** @.gc_buf
-  %old_raw = bitcast i8** %old_buf to i8*
-  %new_raw = call i8* @realloc(i8* %old_raw, i64 %byte_sz)
-  %new_buf = bitcast i8* %new_raw to i8**
-  store i8** %new_buf, i8*** @.gc_buf
-  store i64 %new_cap, i64* @.gc_cap
-  br label %store
-
-store:
-  %cur_buf = load i8**, i8*** @.gc_buf
-  %cur_len = load i64, i64* @.gc_len
-  %slot = getelementptr i8*, i8** %cur_buf, i64 %cur_len
-  store i8* %ptr, i8** %slot
-  %new_len = add i64 %cur_len, 1
-  store i64 %new_len, i64* @.gc_len
-  ret void
-}
-
-define void @__hulk_gc_sweep() {
-entry:
-  %len = load i64, i64* @.gc_len
-  %cmp0 = icmp sle i64 %len, 0
-  br i1 %cmp0, label %done, label %loop_hdr
-
-loop_hdr:
-  %idx = alloca i64
-  store i64 0, i64* %idx
-  br label %loop
-
-loop:
-  %i = load i64, i64* %idx
-  %cond = icmp slt i64 %i, %len
-  br i1 %cond, label %body, label %free_buf
-
-body:
-  %buf = load i8**, i8*** @.gc_buf
-  %slot = getelementptr i8*, i8** %buf, i64 %i
-  %ptr = load i8*, i8** %slot
-  call void @free(i8* %ptr)
-  %next = add i64 %i, 1
-  store i64 %next, i64* %idx
-  br label %loop
-
-free_buf:
-  %buf2 = load i8**, i8*** @.gc_buf
-  %buf_raw = bitcast i8** %buf2 to i8*
-  call void @free(i8* %buf_raw)
-  store i8** null, i8*** @.gc_buf
-  store i64 0, i64* @.gc_len
-  store i64 0, i64* @.gc_cap
-  br label %done
-
-done:
-  ret void
-}
-
-define i8* @__hulk_num_to_str(double %val) {
-entry:
-  %fl = call double @llvm.floor.f64(double %val)
-  %diff = fsub double %val, %fl
-  %is_int = fcmp oeq double %diff, 0.0
-  %abs_val = call double @llvm.fabs.f64(double %val)
-  %small_enough = fcmp olt double %abs_val, 1.0e15
-  %use_int = and i1 %is_int, %small_enough
-  br i1 %use_int, label %fmt_as_int, label %fmt_as_dbl
-fmt_as_int:
-  %ilen = call i32 (i8*, i64, i8*, ...) @snprintf(i8* null, i64 0, i8* getelementptr inbounds ([5 x i8], [5 x i8]* @.fmt_int, i64 0, i64 0), double %val)
-  %ilen64 = sext i32 %ilen to i64
-  %ibufsz = add i64 %ilen64, 1
-  %ibuf = call i8* @malloc(i64 %ibufsz)
-  call void @__hulk_gc_track(i8* %ibuf)
-  call i32 (i8*, i64, i8*, ...) @snprintf(i8* %ibuf, i64 %ibufsz, i8* getelementptr inbounds ([5 x i8], [5 x i8]* @.fmt_int, i64 0, i64 0), double %val)
-  ret i8* %ibuf
-fmt_as_dbl:
-  %dlen = call i32 (i8*, i64, i8*, ...) @snprintf(i8* null, i64 0, i8* getelementptr inbounds ([5 x i8], [5 x i8]* @.fmt_num, i64 0, i64 0), double %val)
-  %dlen64 = sext i32 %dlen to i64
-  %dbufsz = add i64 %dlen64, 1
-  %dbuf = call i8* @malloc(i64 %dbufsz)
-  call void @__hulk_gc_track(i8* %dbuf)
-  call i32 (i8*, i64, i8*, ...) @snprintf(i8* %dbuf, i64 %dbufsz, i8* getelementptr inbounds ([5 x i8], [5 x i8]* @.fmt_num, i64 0, i64 0), double %val)
-  ret i8* %dbuf
-}
-
-define i8* @__hulk_bool_to_str(double %val) {
-entry:
-  %cond = fcmp one double %val, 0.0
-  %res = select i1 %cond, i8* getelementptr inbounds ([5 x i8], [5 x i8]* @.true_s, i64 0, i64 0), i8* getelementptr inbounds ([6 x i8], [6 x i8]* @.false_s, i64 0, i64 0)
-  ret i8* %res
-}
-
-define void @__hulk_print_val(double %val) {
-entry:
-  ; Respaldo: imprimir como número (por defecto seguro para tipo Unknown)
-  call i32 (i8*, ...) @printf(i8* getelementptr inbounds ([5 x i8], [5 x i8]* @.fmt_num, i64 0, i64 0), double %val)
-  call i32 @puts(i8* getelementptr inbounds ([1 x i8], [1 x i8]* @.empty_s, i64 0, i64 0))
-  ret void
-}
-
-define i8* @__hulk_to_str(double %val) {
-entry:
-  %numstr = call i8* @__hulk_num_to_str(double %val)
-  ret i8* %numstr
-}
+@.slit_0 = private unnamed_addr constant [13 x i8] c"Hola sin GC!\00"
 
 define i32 @main() {
 entry:
-  %t1 = ptrtoint i8* getelementptr inbounds ([14 x i8], [14 x i8]* @.slit_0, i64 0, i64 0) to i64
+  %t1 = ptrtoint i8* getelementptr inbounds ([13 x i8], [13 x i8]* @.slit_0, i64 0, i64 0) to i64
   %t2 = bitcast i64 %t1 to double
   %t3 = bitcast double %t2 to i64
   %t4 = alloca i64
@@ -166,15 +44,6 @@ entry:
   %t5 = load i64, i64* %t4
   %t6 = inttoptr i64 %t5 to i8*
   call i32 @puts(i8* %t6)
-  %t8 = ptrtoint i8* getelementptr inbounds ([23 x i8], [23 x i8]* @.slit_7, i64 0, i64 0) to i64
-  %t9 = bitcast i64 %t8 to double
-  %t10 = bitcast double %t9 to i64
-  %t11 = alloca i64
-  store i64 %t10, i64* %t11
-  %t12 = load i64, i64* %t11
-  %t13 = inttoptr i64 %t12 to i8*
-  call i32 @puts(i8* %t13)
-  call void @__hulk_gc_sweep()
   ret i32 0
 }
 

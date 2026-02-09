@@ -1,4 +1,9 @@
 pub mod llvm_target;
+mod utils;
+mod context;
+mod classes;
+mod functions;
+mod expressions;
 
 #[cfg(test)]
 mod tests;
