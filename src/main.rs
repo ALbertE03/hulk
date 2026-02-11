@@ -1,6 +1,7 @@
 use hulk_compiler::parser::Parser;
 use hulk_compiler::macros::expand_macros;
 use hulk_compiler::ast::optimize::optimize_program;
+use hulk_compiler::ast::transform::transform_implicit_functors;
 use hulk_compiler::codegen::{CodeGenerator, llvm_target::LlvmGenerator};
 use std::io::{self, Read};
 use std::env;
@@ -22,8 +23,11 @@ fn main() {
     match parser.parse_program() {
 
         Ok(program) => {
-            let expanded = expand_macros(program);
+            let mut expanded = expand_macros(program);
             
+            // Transformar implicit functors ANTES del semantic check
+            let temp_ctx = hulk_compiler::semantic::Context::new();
+            transform_implicit_functors(&mut expanded, &temp_ctx);
     
             match hulk_compiler::semantic::check_program(&expanded) {
                  Ok(context) => {

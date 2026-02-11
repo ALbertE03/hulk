@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use crate::ast::nodes::{TypeDecl, TypeAnnotation, Expr};
 use crate::utils::Spanned;
 use super::context::Ctx;
-use super::utils::{val_ty_from_annotation, ValTy};
+use super::utils::{val_ty_from_annotation};
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Ordenamiento topológico de clases para emitir padres antes que hijos
@@ -43,7 +43,7 @@ pub fn topo_sort_classes(
 // ─────────────────────────────────────────────────────────────────────────────
 
 pub fn emit_class(ctx: &mut Ctx, td: &TypeDecl, gen_expr: &dyn Fn(&mut Ctx, &Spanned<Expr>) -> String, infer_return_type_from_body: &dyn Fn(&Expr, &HashMap<String, String>) -> Option<String>) {
-    // ── 1. Recopilar atributos + métodos heredados del padre ────────────
+    // ──  Recopilar atributos + métodos heredados del padre ────────────
     let mut attr_indices: HashMap<String, u32> = HashMap::new();
     let mut attr_order: Vec<String> = Vec::new();
     let mut method_names: HashMap<String, String> = HashMap::new();
@@ -72,7 +72,7 @@ pub fn emit_class(ctx: &mut Ctx, td: &TypeDecl, gen_expr: &dyn Fn(&mut Ctx, &Spa
         }
     }
 
-    // ── 2. Atributos propios ──────────────────────────────────────────────
+    // Atributos propios
     // Construir mapa de tipos de parámetros: nombre_param -> nombre_tipo  (ej., "name" -> "String")
     let param_types: HashMap<String, String> = td.params.iter().filter_map(|p| {
         if let Some(TypeAnnotation::Name(ref tn)) = p.type_annotation {
@@ -89,9 +89,9 @@ pub fn emit_class(ctx: &mut Ctx, td: &TypeDecl, gen_expr: &dyn Fn(&mut Ctx, &Spa
             idx += 1;
         }
         // Inferir tipo de atributo desde:
-        //  a) Anotación de tipo explícita del atributo
-        //  b) Expresión de inicialización referenciando un parámetro tipado del constructor
-        //  c) Tipo literal de la expresión de inicialización
+        //  Anotación de tipo explícita del atributo
+        //  Expresión de inicialización referenciando un parámetro tipado del constructor
+        //  Tipo literal de la expresión de inicialización
         if !attr_types.contains_key(&attr.name) {
             if let Some(TypeAnnotation::Name(ref tn)) = attr.type_annotation {
                 attr_types.insert(attr.name.clone(), tn.clone());
@@ -109,14 +109,14 @@ pub fn emit_class(ctx: &mut Ctx, td: &TypeDecl, gen_expr: &dyn Fn(&mut Ctx, &Spa
         }
     }
 
-    // ── 3. Tipo struct { i64 typeid, double, double, ... } ──────────────
+    //  Tipo struct { i64 typeid, double, double, ... } 
     let struct_name = format!("%T.{}", td.name);
     let mut fields = "i64".to_string(); // slot 0 = id de tipo
     for _ in 1..idx { fields.push_str(", double"); }
 
     ctx.globals.push_str(&format!("{} = type {{ {} }}\n", struct_name, fields));
 
-    // ── 4. Registrar métodos propios (sobreescribir heredados) ──────────────
+    // Registrar métodos propios (sobreescribir heredados) 
     let mut method_ret_types: HashMap<String, String> = HashMap::new();
     // Heredar tipos de retorno de métodos del padre
     if let Some(ref pi) = td.parent {
@@ -154,7 +154,7 @@ pub fn emit_class(ctx: &mut Ctx, td: &TypeDecl, gen_expr: &dyn Fn(&mut Ctx, &Spa
         method_ret_types,
     });
 
-    // ── 5. Emitir constructor: @Tipo_new(args...) -> i8* ──────────────────
+    //  Emitir constructor: @Tipo_new(args...) -> i8* 
     {
         let mut sig = String::new();
         for (i, p) in td.params.iter().enumerate() {
@@ -246,7 +246,7 @@ pub fn emit_class(ctx: &mut Ctx, td: &TypeDecl, gen_expr: &dyn Fn(&mut Ctx, &Spa
         ctx.functions.push_str("}\n\n");
     }
 
-    // ── 6. Emitir métodos ─────────────────────────────────────────────────
+    // Emitir métodos 
     ctx.current_class = Some(td.name.clone());
     for m in &td.methods {
         let fname = format!("{}_{}", td.name, m.name);

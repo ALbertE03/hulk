@@ -6,7 +6,7 @@ use crate::errors::SemanticError;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TypeKind {
-    Basic,      // Tipos primitivos y clases definidas por usuario
+    Basic,      // Tipos primitivos y clases definidas
     Protocol,   // Protocolos
 }
 
@@ -46,12 +46,12 @@ impl Type {
     pub fn conforms_to(&self, other: &Rc<RefCell<Type>>) -> bool {
         let other = other.borrow();
         
-        // Caso 1: Mismo tipo
+        // Mismo tipo
         if self.name == other.name {
             return true;
         }
 
-        // Caso 2: El otro es Object (todo hereda de Object implícitamente)
+        // El otro es Object (todo hereda de Object implícitamente)
         if other.name == "Object" {
             return true;
         }
@@ -73,8 +73,8 @@ impl Type {
                             return false;
                         }
                         
-                        // Implementación COMPLETA de varianza:
-                        // 1. Covarianza en el tipo de retorno:
+                        
+                        //  Covarianza en el tipo de retorno:
                         //    El retorno de la implementación debe ser un subtipo del retorno de la definición (protocolo).
                         //    Retorno_Impl <= Retorno_Proto
                         
@@ -82,7 +82,7 @@ impl Type {
                             return false;
                         }
 
-                        // 2. Contravarianza en los argumentos:
+                        // Contravarianza en los argumentos:
                         //    Los argumentos de la implementación deben ser supertipos de los argumentos de la definición.
                         //    Arg_Proto <= Arg_Impl
                         for (i, (_, param_type)) in my_method.params.iter().enumerate() {

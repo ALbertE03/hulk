@@ -107,7 +107,13 @@ impl<'a> ExprVisitor for SanitizationVisitor<'a> {
 
         for (name, ty, init) in bindings {
             let new_init = self.visit_expr(init);
-            let new_name = gensym(&name);
+            
+            let new_name = if let Some(placeholder_target) = self.context.substitutions.get(&name) {
+                placeholder_target.clone()
+            } else {
+                gensym(&name)
+            };
+            
             inner_scope.insert(name, new_name.clone());
             new_bindings.push((new_name, ty, new_init));
         }

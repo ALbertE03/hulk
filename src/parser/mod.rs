@@ -59,14 +59,33 @@ impl Parser {
             let mut exprs = Vec::new();
             
             // Parsear todas las expresiones restantes
-            while !self.at_end() {
+            loop {
+                if self.at_end() {
+                    break;
+                }
+                
                 let e = self.parse_spanned_expr(Precedence::Lowest)?;
                 exprs.push(e);
                 
-                // Consumir semicolon opcional
-                if !self.match_token(&Token::Semicolon) {
-                    break;
+                // Si hay punto y coma, consumirlo y continuar parseando
+                if self.match_token(&Token::Semicolon) {
+                    continue;
                 }
+                
+                // Si no hay punto y coma pero aún hay tokens, podría ser la última expresión
+                // Verificar si el siguiente token es el inicio de una nueva expresión
+                if !self.at_end() && self.is_expr_start() {
+                    // Hay otra expresión sin punto y coma previo - error de sintaxis
+                    let pos = self.peek_pos();
+                    return Err(ParseError::UnexpectedToken {
+                        expected: "';' or end of file".to_string(),
+                        found: self.peek_description(),
+                        pos,
+                    });
+                }
+                
+                // No hay más expresiones
+                break;
             }
             
             // Si solo hay una expresión, retornarla directamente
@@ -104,7 +123,7 @@ impl Parser {
         }
     }
 
-    // --- Análisis de expresiones ---
+    // Análisis de expresiones 
 
     /// Analiza una expresión respetando la precedencia y devuelve un `Spanned<Expr>`.
     fn parse_spanned_expr(&mut self, precedence: Precedence) -> Result<Spanned<Expr>, ParseError> {
@@ -354,7 +373,7 @@ impl Parser {
         }
     }
 
-    // --- Specific Expression Parsers ---
+    // Specific Expression Parsers 
 
     /// Analiza una expresión `let` con sus enlaces y el cuerpo asociado.
     fn parse_let_expr(&mut self, pos: Position) -> Result<Spanned<Expr>, ParseError> {
@@ -637,7 +656,7 @@ impl Parser {
         }
     }
 
-    // --- Declaration Parsers ---
+    // Declaration Parsers 
 
     /// Analiza la declaración de una función y devuelve su `FunctionDecl`.
     fn parse_function_decl(&mut self) -> Result<FunctionDecl, ParseError> {
@@ -946,7 +965,7 @@ impl Parser {
         Ok(params)
     }
 
-    // --- Parsing de Macros ---
+    // Parsing de Macros 
 
     /// Analiza una declaración de macro: def name(params) => body
     fn parse_macro_decl(&mut self) -> Result<MacroDecl, ParseError> {

@@ -38,6 +38,10 @@ pub struct Ctx<'a> {
     pub lambda_defs: String,
     /// Tipos de retorno de funciones con nombre
     pub func_ret_types: HashMap<String, ValTy>,
+    /// Mapeo de protocolos a tipos que los implementan: protocolo -> vec[(type_id, clase)]
+    pub protocol_implementations: HashMap<String, Vec<(u32, String)>>,
+    /// Wrappers de functors generados automáticamente: función_nombre -> (protocolo, wrapper_type_name)
+    pub auto_functor_wrappers: HashMap<String, (String, String)>,
 }
 
 impl<'a> Ctx<'a> {
@@ -90,10 +94,12 @@ declare double @llvm.floor.f64(double)\n\
             next_type_id: 1, // 0 = reservado / desconocido
             lambda_defs: String::new(),
             func_ret_types: HashMap::new(),
+            protocol_implementations: HashMap::new(),
+            auto_functor_wrappers: HashMap::new(),
         }
     }
 
-    // ── auxiliares ────────────────────────────────────────────────────────────
+    // auxiliares 
     pub fn tmp(&mut self) -> String { let n = format!("%t{}", self.counter); self.counter += 1; n }
     pub fn lbl(&mut self, pfx: &str) -> String { let n = format!("{}_{}", pfx, self.counter); self.counter += 1; n }
     pub fn emit(&mut self, s: &str) { self.functions.push_str("  "); self.functions.push_str(s); self.functions.push('\n'); }

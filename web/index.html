@@ -771,6 +771,10 @@
                 <option value="loops">🔄 Ciclos</option>
                 <option value="types">🏗️ Tipos y Herencia</option>
                 <option value="iterables">📦 Iterables y For</option>
+                <option value="protocols">🔌 Protocolos</option>
+                <option value="functors">🎯 Functors</option>
+                <option value="implicit-functors">✨ Implicit Functors</option>
+                <option value="macros">✨ Macros (def)</option>
                 <option value="demo">🎯 Demo Completo</option>
             </select>
         </div>
@@ -1620,22 +1624,22 @@ type PrintVisitor() extends Visitor {
 const EXAMPLES = {
 
 hello: `// ¡Tu primer programa en HULK!
-{
-    print("¡Hola Mundo!");
-    print("Bienvenido a HULK 💚");
-}
+
+print("¡Hola Mundo!");
+print("Bienvenido a HULK 💚");
+
 `,
 
 math: `// Variables con let-in y operadores matemáticos
-{
-    let pi = 3.14159 in
-    let r = 5 in
-    let area = pi * r ** 2 in {
+
+let pi = 3.14159 in
+let r = 5 in
+let area = pi * r ** 2 in {
         print("Radio:" @@ r);
         print("Área del círculo:" @@ area);
         print("Perímetro:" @@ (2 * pi * r));
     };
-}
+
 `,
 
 functions: `// Funciones recursivas con =>
@@ -1653,19 +1657,19 @@ function fibonacci(n:Number){
 }
 }
 
-{
-    print("factorial(5) =" @@ factorial(5));
-    print("factorial(10) =" @@ factorial(10));
-    print("fibonacci(10) =" @@ fibonacci(10));
-    print("fibonacci(15) =" @@ fibonacci(15));
-}
+
+print("factorial(5) =" @@ factorial(5));
+print("factorial(10) =" @@ factorial(10));
+print("fibonacci(10) =" @@ fibonacci(10));
+print("fibonacci(15) =" @@ fibonacci(15));
+
 
 `,
 
 strings: `// @ concatena cadenas, @@ concatena con espacio
-{
-    let nombre = "HULK" in
-    let version = "1.0" in {
+
+let nombre = "HULK" in
+let version = "1.0" in {
         print("Lenguaje:"@nombre@"v"@version);
         print("Lenguaje:"@@nombre@@"v"@@version);
         print("Hola" @@ "Mundo");
@@ -1673,7 +1677,7 @@ strings: `// @ concatena cadenas, @@ concatena con espacio
         print("2 + 3 =" @@ (2 + 3));
         print("PI =" @@ 3.14159);
     };
-}
+
 
 `,
 
@@ -1689,19 +1693,19 @@ function abs(x: Number): Number =>
 function max(a: Number, b: Number): Number =>
     if (a >= b) a else b;
 
-{
-    print("5 es" @@ clasificar(5));
-    print("-3 es" @@ clasificar(-3));
-    print("0 es" @@ clasificar(0));
-    print("|−42| =" @@ abs(0 - 42));
-    print("max(7, 12) =" @@ max(7, 12));
-}
+
+print("5 es" @@ clasificar(5));
+print("-3 es" @@ clasificar(-3));
+print("0 es" @@ clasificar(0));
+print("|−42| =" @@ abs(0 - 42));
+print("max(7, 12) =" @@ max(7, 12));
+
 `,
 
 loops: `// While loop con variables mutables
-{
-    let i = 0 in
-    let sum = 0 in {
+
+let i = 0 in
+let sum = 0 in {
         while (i < 10) {
             i := i + 1;
             sum := sum + i;
@@ -1710,16 +1714,16 @@ loops: `// While loop con variables mutables
     };
 
     // Conteo con condición
-    let n = 1 in
-    let pares = 0 in {
-        while (n <= 20) {
-            if (n % 2 == 0) pares := pares + 1
-            else 0;
-            n := n + 1;
+let n = 1 in
+let pares = 0 in {
+    while (n <= 20) {
+        if (n % 2 == 0) pares := pares + 1
+        else 0;
+        n := n + 1;
         };
-        print("Pares en [1,20]:" @@ pares);
+    print("Pares en [1,20]:" @@ pares);
     };
-}
+
 `,
 
 types: `// Sistema de tipos con herencia
@@ -1762,50 +1766,68 @@ type Range(min: Number, max: Number) {
 function range(min: Number, max: Number): Range =>
     new Range(min, max);
 
-{
-    print("Contando del 1 al 5:");
+
+print("Contando del 1 al 5:");
     
-    let sum = 0 in {
-    for (x in range(1, 6)){
+let sum = 0 in {
+for (x in range(1, 6)){
         print("  →" @@ x);
         sum := sum+x;
-    }
-    print("Suma 1..5 =" @@ sum);}
-
 }
+print("Suma 1..5 =" @@ sum);}
+
 
 `,
 
-demo: `// ════════ HULK Demo Completo ════════
+protocols: `// Protocolos definen contratos que los tipos deben cumplir
+protocol Hashable {
+    hash(): Number;
+}
 
-// — Funciones matemáticas —
-function abs(x: Number): Number =>
-    if (x < 0) (0 - x) else x;
+protocol Equatable extends Hashable {
+    equals(other: Object): Boolean;
+}
 
-function factorial(n: Number): Number =>
-    if (n <= 1) 1
-    else n * factorial(n - 1);
-
-function max(a: Number, b: Number): Number =>
-    if (a >= b) a else b;
-
-// — Tipos con herencia —
-type Shape(name: String) {
+// Un tipo que implementa Hashable
+type Person(name: String, age: Number) {
     name: String = name;
-    describe(): String => "Forma: " @ self.name;
+    age: Number = age;
+
+    hash(): Number =>
+        (self.age * 1000);
+    
+    equals(other: Object): Boolean => {
+        let o = other as Person in
+        (self.name == o.name) & (self.age == o.age);
+    };
 }
 
-type Circle(radius: Number) inherits Shape("Circulo") {
-    radius: Number = radius;
-    area(): Number => 3.14159 * self.radius ** 2;
+
+let p1 = new Person("Alice", 30) in
+let p2 = new Person("Bob", 25) in
+let x: Hashable = p1 in {
+        print("Hash de Alice:" @@ x.hash());
+        print("Hash de Bob:" @@ p2.hash());
+        print("¿Son iguales?" @@ p1.equals(p2));
+    };
+
+`,
+
+functors: `// Functors: objetos que se pueden llamar como funciones
+
+// Un functor es un tipo que implementa un protocolo con método 'invoke'
+// HULK soporta AMBAS sintaxis:
+//   - filter(x) 
+//   - Explícita: filter.invoke(x)
+protocol NumberFilter {
+    invoke(x: Number): Boolean;
 }
 
-type Square(side: Number) inherits Shape("Cuadrado") {
-    side: Number = side;
-    area(): Number => self.side ** 2;
+protocol NumberMapper {
+    invoke(x: Number): Number;
 }
 
-// — Iterable —
+// Tipo Range para iterar
 type Range(min: Number, max: Number) {
     min: Number = min;
     max: Number = max;
@@ -1820,32 +1842,487 @@ type Range(min: Number, max: Number) {
 function range(min: Number, max: Number): Range =>
     new Range(min, max);
 
-// ═══ Ejecución ═══
-{
-    print("=== HULK Demo ===");
-    print("factorial(7) =" @@ factorial(7));
-    print("|−42| =" @@ abs(0 - 42));
-    print("max(99, 42) =" @@ max(99, 42));
+// Tipos que implementan protocolos functor
+type IsOdd {
+    invoke(x: Number): Boolean => x % 2 != 0;
+}
 
+type IsEven {
+    invoke(x: Number): Boolean => x % 2 == 0;
+}
+
+type Double {
+    invoke(x: Number): Number => x * 2;
+}
+
+type Square {
+    invoke(x: Number): Number => x * x;
+}
+
+function count_when(numbers: Range, filter: NumberFilter): Number => {
+    let total = 0 in {
+        for (x in numbers) {
+            // ¡Sintaxis functor! filter(x) en lugar de filter.invoke(x)
+            total := total + if (filter(x as Number)) 1 else 0;
+        };
+        total;
+    };
+};
+
+function map_sum(numbers: Range, mapper: NumberMapper): Number => {
+    let sum = 0 in {
+        for (x in numbers) {
+            // Llamada directa al functor
+            sum := sum + mapper.invoke(x as Number);
+        };
+        sum;
+    };
+};
+
+// ═══ Demostración ═══
+{
+    print("═══ Functors en HULK ═══");
+    print("");
+    
+    // Contar impares
+    print("Números del 1 al 10:");
+    let nums1 = range(1, 11) in
+        print("  Impares:" @@ count_when(nums1, new IsOdd()));
+    
+    // Contar pares
+    let nums2 = range(1, 11) in
+        print("  Pares:" @@ count_when(nums2, new IsEven()));
+    
+    print("");
+    
+    // Mapear y sumar valores
+    print("Suma de dobles (1..5):");
+    let nums3 = range(1, 6) in
+        print("  " @@ map_sum(nums3, new Double()));
+    
+    print("Suma de cuadrados (1..5):");
+    let nums4 = range(1, 6) in
+        print("  " @@ map_sum(nums4, new Square()));
+    
+    print("");
+    print("═══ FIN ═══");
+}
+
+`,
+
+'implicit-functors': `// Implicit Functors: pasar funciones directamente como functors
+// ¡HULK genera automáticamente los wrappers!
+
+protocol NumberFilter {
+    invoke(x: Number): Boolean;
+}
+
+// Tipo Range para iterar
+type Range(min: Number, max: Number) {
+    min: Number = min;
+    max: Number = max;
+    current: Number = min - 1;
+    next(): Boolean => {
+        self.current := self.current + 1;
+        self.current < self.max;
+    };
+    get_current(): Number => self.current;
+}
+
+function range(min: Number, max: Number): Range =>
+    new Range(min, max);
+
+// Funciones simples
+function is_odd(x: Number): Boolean => x % 2 != 0;
+function is_even(x: Number): Boolean => x % 2 == 0;
+function is_prime(n: Number): Boolean =>
+    if (n <= 1) false
+    else if (n == 2) true
+    else {
+        let i = 2, is_p = true in {
+            while (i * i <= n & is_p) {
+                is_p := if (n % i == 0) false else is_p;
+                i := i + 1;
+            };
+            is_p;
+        }
+    };
+
+function count_when(numbers: Range, filter: NumberFilter): Number => {
+    let total = 0 in {
+        for (x in numbers) {
+            total := total + if (filter(x as Number)) 1 else 0;
+        };
+        total;
+    };
+};
+
+// ═══ Demostración Implicit Functors ═══
+{
+    print("═══ Implicit Functors ═══");
+    print("");
+    print("¡Pasando funciones directamente sin crear tipos wrapper!");
+    print("");
+    
+    // ¡Simplemente pasamos el nombre de la función!
+    // El compilador genera automáticamente los wrappers
+    let numbers = range(1, 101) in {
+        print("Impares (1-100):" @@ count_when(numbers, is_odd));
+        print("Pares (1-100):" @@ count_when(numbers, is_even));
+        print("Primos (1-100):" @@ count_when(numbers, is_prime));
+    };
+    
+    print("");
+    print("═══ FIN ═══");
+}
+
+`,
+
+macros: `// Las macros (def) se expanden en tiempo de compilación
+def repeat(n: Number, *expr: Object): Object =>
+    let total = n in
+        while (total >= 0) {
+            total := total - 1;
+            expr;
+        };
+
+def simplify(expr:Number) {
+    match(expr) {
+        case (x1:Number + x2:Number) => simplify(x1) + simplify(x2);
+        case (x1:Number + 0) => simplify(x1);
+        case (x1:Number - x2:Number) => simplify(x1) + simplify(x2);
+        case (x1:Number - 0) => simplify(x1);
+        case (x1:Number * x2:Number) => simplify(x1) * simplify(x2);
+        case (x1:Number * 1) => simplify(x1);
+        default => expr;
+    };
+}
+//Variable placeholders
+def repeat1($iter: Number, n: Number, *expr:Object) {
+    let iter: Number = 0, total:Number = n in {
+        while (total >= 0) {
+            total := total - 1;
+            expr;
+            iter := iter + 1
+        };
+    }
+}
+// Symbolic arguments
+def swap(@a: Object, @b: Object) {
+    let temp: Object = a in {
+        a := b;
+        b := temp;
+    }
+}
+
+//Variable placeholders
+repeat1(current, 10) {
+    print(current);
+};
+print(simplify((42+0)*1));
+repeat(10) {
+    print("Hello World");
+};
+// Symbolic parameters
+let x: Object = 5, y: Object = 2 in {
+    swap(@x, @y);
+    print(x);
+    print(y);
+};
+// Variable sanitization
+let total = 10 in repeat(total) {
+    print(total);
+};
+
+
+`
+,
+demo: `// ════════ HULK Demo Completo ════════
+
+// ─── Macros Útiles ───
+def repeat(n: Number, *expr: Object): Object =>
+    let total = n in
+        while (total > 0) {
+            total := total - 1;
+            expr;
+        };
+
+def measure_time(name: String, *body: Object): Object => {
+    print("⏱️  Ejecutando:" @@ name);
+    body;
+    print("✅ Completado:" @@ name);
+};
+
+def assert(condition: Boolean, msg: String): Object =>
+    if (condition) print("✓ Test pasado")
+    else print("✗ Test fallido:" @@ msg);
+
+// ─── Protocolos ───
+protocol Drawable {
+    draw(): String;
+}
+
+protocol Comparable {
+    compare(other: Object): Number;
+}
+
+protocol Printable extends Drawable {
+    to_string(): String;
+}
+
+// ─── Funciones Matemáticas ───
+function abs(x: Number): Number =>
+    if (x < 0) (0 - x) else x;
+
+function factorial(n: Number): Number =>
+    if (n <= 1) 1
+    else n * factorial(n - 1);
+
+function fibonacci(n: Number): Number =>
+    if (n <= 1) n
+    else fibonacci(n - 1) + fibonacci(n - 2);
+
+function max(a: Number, b: Number): Number =>
+    if (a >= b) a else b;
+
+function min(a: Number, b: Number): Number =>
+    if (a <= b) a else b;
+
+function pow(base1: Number, exp: Number): Number =>
+    if (exp == 0) 1
+    elif (exp == 1) base1
+    else base1 * pow(base1, exp - 1);
+
+function gcd(a: Number, b: Number): Number =>
+    if (b == 0) a
+    else gcd(b, a % b);
+
+function is_prime(n: Number): Boolean => {
+    if (n <= 1) false
+    elif (n == 2) true
+    elif (n % 2 == 0) false
+    else {
+        let i = 3 in
+        let is_p = true in {
+            while ((i * i <= n) & is_p) {
+                if (n % i == 0)
+                    is_p := false
+                else
+                    i := i + 2;
+            };
+            is_p;
+        };
+    };
+};
+
+// ─── Tipos con Herencia y Protocolos ───
+type Shape(name: String) {
+    name: String = name;
+    
+    describe(): String => "Forma: " @ self.name;
+    
+    draw(): String => "[Shape: " @ self.name @ "]";
+    
+    to_string(): String => self.name;
+}
+
+type Circle(radius: Number) inherits Shape("Circulo") {
+    radius: Number = radius;
+    
+    area(): Number => 3.14159 * self.radius ** 2;
+    
+    perimeter(): Number => 2.0 * 3.14159 * self.radius;
+    
+    draw(): String => "◯ (r=" @ self.radius @ ")";
+    
+    compare(other: Object): Number => {
+        let o = other as Circle in
+        if (self.radius > o.radius) 1
+        elif (self.radius < o.radius) (0 - 1)
+        else 0;
+    };
+}
+
+type Square(side: Number) inherits Shape("Cuadrado") {
+    side: Number = side;
+    
+    area(): Number => self.side ** 2;
+    
+    perimeter(): Number => 4.0 * self.side;
+    
+    draw(): String => "□ (lado=" @ self.side @ ")";
+    
+    compare(other: Object): Number => {
+        let o = other as Square in
+        if (self.side > o.side) 1
+        elif (self.side < o.side) (0 - 1)
+        else 0;
+    };
+}
+
+type Rectangle(width: Number, height: Number) inherits Shape("Rectangulo") {
+    width: Number = width;
+    height: Number = height;
+    
+    area(): Number => self.width * self.height;
+    
+    perimeter(): Number => 2.0 * (self.width + self.height);
+    
+    draw(): String => "▭ (" @ self.width @ "x" @ self.height @ ")";
+}
+
+// ─── Tipo Range (Iterable) ───
+type Range(min: Number, max: Number) {
+    min: Number = min;
+    max: Number = max;
+    current: Number = min - 1;
+    
+    next(): Boolean => {
+        self.current := self.current + 1;
+        self.current < self.max;
+    };
+    
+    get_current(): Number => self.current;
+}
+
+function range(min: Number, max: Number): Range =>
+    new Range(min, max);
+
+// ─── Tipo Point ───
+type Point(x: Number, y: Number) {
+    x: Number = x;
+    y: Number = y;
+    
+    distance_origin(): Number =>
+        (self.x ** 2 + self.y ** 2) ** 0.5;
+    
+    distance_to(other: Point): Number => {
+        let dx = self.x - other.x in
+        let dy = self.y - other.y in
+            (dx ** 2 + dy ** 2) ** 0.5;
+    };
+    
+    draw(): String =>
+        "(" @ self.x @ ", " @ self.y @ ")";
+    
+    to_string(): String => self.draw();
+}
+
+// ═══ Ejecución Principal ═══
+{
+    print("════════ HULK DEMO COMPLETO ════════");
+    print("");
+
+    // --- Macros en acción ---
+    measure_time("Pruebas matemáticas") {
+        print("📐 Funciones Matemáticas:");
+        print("  factorial(7) =" @@ factorial(7));
+        print("  fibonacci(10) =" @@ fibonacci(10));
+        print("  |−42| =" @@ abs(0 - 42));
+        print("  max(99, 42) =" @@ max(99, 42));
+        print("  min(99, 42) =" @@ min(99, 42));
+        print("  pow(2, 8) =" @@ pow(2, 8));
+        print("  gcd(48, 18) =" @@ gcd(48, 18));
+        print("  ¿17 es primo?" @@ is_prime(17));
+        print("  ¿20 es primo?" @@ is_prime(20));
+    };
+    
+    print("");
+    
+    // --- Uso de macros ---
+    print("🔄 Macro repeat:");
+    let counter = 0 in {
+        repeat(3) {
+            counter := counter + 1;
+            print("  Iteración #" @ counter);
+        };
+    };
+    
+    print("");
+
+    // --- Formas geométricas ---
+    print("🔷 Figuras Geométricas:");
+    
     let c = new Circle(5) in {
         print(c.describe());
-        print("  Radio:" @@ c.radius);
-        print("  Area:" @@ c.area());
+        print("  " @ c.draw());
+        print("  Área:" @@ c.area());
+        print("  Perímetro:" @@ c.perimeter());
     };
-
+    
     let s = new Square(4) in {
         print(s.describe());
-        print("  Lado:" @@ s.side);
-        print("  Area:" @@ s.area());
+        print("  " @ s.draw());
+        print("  Área:" @@ s.area());
+        print("  Perímetro:" @@ s.perimeter());
     };
-
-    print("Primeros 5 cuadrados:");
-    for (n in range(1, 6))
-        print("  " @@ n @ "^2 =" @@ (n ** 2));
-
-    print("=== FIN ===");
+    
+    let r = new Rectangle(6, 3) in {
+        print(r.describe());
+        print("  " @ r.draw());
+        print("  Área:" @@ r.area());
+        print("  Perímetro:" @@ r.perimeter());
+    };
+    
+    print("");
+    
+    // --- Comparación de círculos ---
+    print("⚖️  Comparación de Círculos:");
+    let c1 = new Circle(5) in
+    let c2 = new Circle(3) in {
+        let comp = c1.compare(c2) in
+        print("  Circle(5) vs Circle(3):" @@
+            if (comp > 0) "mayor"
+            elif (comp < 0) "menor"
+            else "igual");
+    };
+    
+    print("");
+    
+    // --- Puntos y distancias ---
+    print("📍 Puntos y Distancias:");
+    let p1 = new Point(3, 4) in
+    let p2 = new Point(6, 8) in {
+        print("  P1:" @@ p1.to_string());
+        print("  P2:" @@ p2.to_string());
+        print("  Distancia P1 a origen:" @@ p1.distance_origin());
+        print("  Distancia P1 a P2:" @@ p1.distance_to(p2));
+    };
+    
+    print("");
+    
+    // --- Iterables y for ---
+    print("🔢 Iteración con Range:");
+    print("  Primeros 6 cuadrados:");
+    for (n in range(1, 7))
+        print("    " @ n @ "² =" @@ (n ** 2));
+    
+    print("");
+    
+    print("  Suma de números pares del 2 al 10:");
+    let sum = 0 in {
+        for (n in range(2, 11))
+            if (n % 2 == 0)
+                sum := sum + n
+            else 0;
+        print("    Suma =" @@ sum);
+    };
+    
+    print("");
+    
+    // --- Tests con assert ---
+    print("🧪 Tests con Assert:");
+    assert(factorial(5) == 120, "factorial(5) debería ser 120");
+    assert(fibonacci(7) == 13, "fibonacci(7) debería ser 13");
+    assert(gcd(48, 18) == 6, "gcd(48, 18) debería ser 6");
+    assert(is_prime(17), "17 debería ser primo");
+    
+    print("");
+    print("════════════ FIN ═══════════");
 }
+
 `
+
 };
 
 // ── Monaco setup ─────────────────────────────────────────────

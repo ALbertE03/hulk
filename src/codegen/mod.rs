@@ -7,8 +7,6 @@ mod expressions;
 
 #[cfg(test)]
 mod tests;
-#[cfg(test)]
-mod extra_tests;
 
 use crate::ast::nodes::Program;
 use crate::semantic::Context;

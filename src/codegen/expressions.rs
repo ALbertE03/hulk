@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use crate::ast::nodes::{Expr, Op, UnOp, TypeAnnotation, Pattern};
+use crate::ast::nodes::{Expr, Op, UnOp, Pattern};
 use crate::utils::Spanned;
 use super::context::{Ctx, ClassLayout};
 use super::utils::{fmt_double, ValTy, val_ty_from_annotation};
@@ -7,7 +7,7 @@ use super::functions::mangle_fn;
 
 pub fn gen_expr(ctx: &mut Ctx, expr: &Spanned<Expr>) -> String {
     match &expr.node {
-        // ── Primitivos ──────────────────────────────────────────────────────
+        //  Primitivos
         Expr::Number(v) => fmt_double(*v),
 
         Expr::Boolean(v) => if *v { "1.0".into() } else { "0.0".into() },
@@ -22,13 +22,13 @@ pub fn gen_expr(ctx: &mut Ctx, expr: &Spanned<Expr>) -> String {
         }
 
         Expr::Identifier(name) => {
-            // 1. Local / parámetro
+            // Local / parámetro
             if let Some((ptr, _ty)) = ctx.get_var(name) {
                 let r = ctx.tmp();
                 ctx.emit(&format!("{} = load double, double* {}", r, ptr));
                 return r;
             }
-            // 2. Referencia a `self` dentro de un método — codificar i8* como double
+            // Referencia a `self` dentro de un método — codificar i8* como double
             if name == "self" && ctx.current_class.is_some() {
                 let i = ctx.tmp();
                 ctx.emit(&format!("{} = ptrtoint i8* %self to i64", i));
@@ -36,7 +36,7 @@ pub fn gen_expr(ctx: &mut Ctx, expr: &Spanned<Expr>) -> String {
                 ctx.emit(&format!("{} = bitcast i64 {} to double", d, i));
                 return d;
             }
-            // 3. Atributo de self (dentro del cuerpo de un método)
+            //  Atributo de self (dentro del cuerpo de un método)
             if let Some(cls) = ctx.current_class.clone() {
                 if let Some(layout) = ctx.classes.get(&cls) {
                     if let Some(&idx) = layout.attr_indices.get(name.as_str()) {
@@ -56,7 +56,7 @@ pub fn gen_expr(ctx: &mut Ctx, expr: &Spanned<Expr>) -> String {
             "0.0".into()
         }
 
-        // ── Binario ──────────────────────────────────────────────────────────
+        //  Binario 
         Expr::Binary(lhs_ast, op, rhs_ast) => {
             let l = gen_expr(ctx, lhs_ast);
             let r = gen_expr(ctx, rhs_ast);
@@ -115,13 +115,14 @@ pub fn gen_expr(ctx: &mut Ctx, expr: &Spanned<Expr>) -> String {
                     }
                     ctx.emit(&format!("call i8* @strcat(i8* {}, i8* {})", buf, rp));
 
-                    ctx.emit(&format!("{} = bitcast i8* {} to double", res, buf));
+                    let i = ctx.tmp(); ctx.emit(&format!("{} = ptrtoint i8* {} to i64", i, buf));
+                    ctx.emit(&format!("{} = bitcast i64 {} to double", res, i));
                 }
             }
             res
         }
 
-        // ── Unario ───────────────────────────────────────────────────────────
+        //  Unario 
         Expr::Unary(op, operand) => {
             let v = gen_expr(ctx, operand);
             let res = ctx.tmp();
@@ -136,7 +137,7 @@ pub fn gen_expr(ctx: &mut Ctx, expr: &Spanned<Expr>) -> String {
             res
         }
 
-        // ── If / Else (Condicional) ────────────────────────────────────────
+        //  If / Else (Condicional) 
         Expr::If { cond, then_expr, else_expr } => {
             let cv = gen_expr(ctx, cond);
             let cb = ctx.tmp();
@@ -164,7 +165,7 @@ pub fn gen_expr(ctx: &mut Ctx, expr: &Spanned<Expr>) -> String {
             r
         }
 
-        // ── Mientras (While) ────────────────────────────────────────────────
+        // While 
         Expr::While { cond, body } => {
             let lc = ctx.lbl("wcond"); let lb = ctx.lbl("wbody"); let le = ctx.lbl("wend");
             ctx.emit(&format!("br label %{}", lc));
@@ -183,7 +184,7 @@ pub fn gen_expr(ctx: &mut Ctx, expr: &Spanned<Expr>) -> String {
             "0.0".into()
         }
 
-        // ── Para (For) ──────────────────────────────────────────────────────
+        // (For) 
         // Transpila automáticamente según el tipo del iterable:
         //   - Si es un objeto con métodos next()/get_current() (protocolo Iterable),
         //     se transpila a: while(iterable.next()) let var = iterable.get_current() in { body }
@@ -301,7 +302,7 @@ pub fn gen_expr(ctx: &mut Ctx, expr: &Spanned<Expr>) -> String {
             }
         }
 
-        // ── Let (Enlace de variables) ───────────────────────────────────────
+        //  Let (Enlace de variables) 
         Expr::Let { bindings, body } => {
             ctx.enter_scope();
             for (name, _ann, init_expr) in bindings {
@@ -317,7 +318,7 @@ pub fn gen_expr(ctx: &mut Ctx, expr: &Spanned<Expr>) -> String {
             res
         }
 
-        // ── Asignación ──────────────────────────────────────────────────────
+        // Asignación 
         Expr::Assignment { target, value } => {
             let v = gen_expr(ctx, value);
             if let Some((ptr, _)) = ctx.get_var(target) {
@@ -326,7 +327,7 @@ pub fn gen_expr(ctx: &mut Ctx, expr: &Spanned<Expr>) -> String {
             v
         }
 
-        // ── Asignación a atributo (obj.attr := expr) ────────────────────────
+        //  Asignación a atributo (obj.attr := expr) 
         Expr::AttributeAssignment { obj, attribute, value } => {
             let v = gen_expr(ctx, value);
             // Determinar la clase del objeto
@@ -349,14 +350,14 @@ pub fn gen_expr(ctx: &mut Ctx, expr: &Spanned<Expr>) -> String {
             v
         }
 
-        // ── Bloque ───────────────────────────────────────────────────────────
+        //  Bloque 
         Expr::Block(exprs) => {
             let mut last = "0.0".to_string();
             for e in exprs { last = gen_expr(ctx, e); }
             last
         }
 
-        // ── Llamada (función) ────────────────────────────────────────────────
+        // función 
         Expr::Call { func, args } => {
             if func == "print" {
                 gen_print(ctx, args);
@@ -367,23 +368,22 @@ pub fn gen_expr(ctx: &mut Ctx, expr: &Spanned<Expr>) -> String {
 
             // Verificar si 'func' es una variable (lambda/clausura) en el ámbito
             if let Some((ptr, vty)) = ctx.get_var(func) {
-                // ── Llamada functor: si la variable contiene un objeto con método `invoke`,
-                // llamar obj.invoke(args) en vez de tratar como clausura.
-                if let ValTy::Obj(ref class_name) = vty {
-                    if let Some(layout) = ctx.classes.get(class_name.as_str()) {
-                        if let Some(invoke_fname) = layout.method_names.get("invoke") {
-                            let invoke_fname = invoke_fname[1..].to_string(); // quitar @ inicial
-                            let ov = ctx.tmp();
-                            ctx.emit(&format!("{} = load double, double* {}", ov, ptr));
-                            let op = ctx.decode_ptr(&ov, "i8*");
-                            let mut arg_s = format!("i8* {}", op);
-                            for v in &vals {
-                                arg_s.push_str(&format!(", double {}", v));
-                            }
-                            let r = ctx.tmp();
-                            ctx.emit(&format!("{} = call double @{}({})", r, invoke_fname, arg_s));
-                            return r;
+                // Llamada functor: si la variable contiene un objeto de tipo protocolo con invoke,
+                // usar función dispatch
+                if let ValTy::Obj(ref type_name) = vty {
+                    // Verificar si este tipo es un protocolo con implementaciones registradas
+                    if ctx.protocol_implementations.contains_key(type_name) {
+                        let ov = ctx.tmp();
+                        ctx.emit(&format!("{} = load double, double* {}", ov, ptr));
+                        let op = ctx.decode_ptr(&ov, "i8*");
+                        
+                        let mut arg_s = format!("i8* {}", op);
+                        for v in &vals {
+                            arg_s.push_str(&format!(", double {}", v));
                         }
+                        let r = ctx.tmp();
+                        ctx.emit(&format!("{} = call double @{}_dispatch({})", r, type_name, arg_s));
+                        return r;
                     }
                 }
 
@@ -416,6 +416,9 @@ pub fn gen_expr(ctx: &mut Ctx, expr: &Spanned<Expr>) -> String {
                 r
             } else {
                 // Llamada directa a función
+                
+                // IMPLICIT FUNCTOR: Si esta es una función y el contexto indica que se espera
+                // un protocolo functor, generar wrapper automáticamente
                 let mut arg_s = String::new();
                 for (i, v) in vals.iter().enumerate() {
                     if i > 0 { arg_s.push_str(", "); }
@@ -428,7 +431,7 @@ pub fn gen_expr(ctx: &mut Ctx, expr: &Spanned<Expr>) -> String {
             }
         }
 
-        // ── Instanciación ───────────────────────────────────────────────────
+        //  Instanciación 
         Expr::Instantiation { ty, args } => {
             let mut vals = Vec::new();
             for a in args { vals.push(gen_expr(ctx, a)); }
@@ -444,7 +447,7 @@ pub fn gen_expr(ctx: &mut Ctx, expr: &Spanned<Expr>) -> String {
             d
         }
 
-        // ── Llamada a método ─────────────────────────────────────────────────
+        //  Llamada a método 
         Expr::MethodCall { obj, method, args } => {
             // Resolver la clase del objeto en tiempo de compilación
             let obj_class = resolve_obj_class_from_expr(ctx, &obj.node);
@@ -482,7 +485,7 @@ pub fn gen_expr(ctx: &mut Ctx, expr: &Spanned<Expr>) -> String {
             r
         }
 
-        // ── Acceso a atributo ────────────────────────────────────────────────
+        //  Acceso a atributo 
         Expr::AttributeAccess { obj, attribute } => {
             // Resolver clase del objeto en tiempo de compilación para layout correcto del struct
             let obj_class = resolve_obj_class_from_expr(ctx, &obj.node);
@@ -520,7 +523,7 @@ pub fn gen_expr(ctx: &mut Ctx, expr: &Spanned<Expr>) -> String {
             }
         }
 
-        // ── Llamada base (llama al constructor o método del padre) ───────────
+        //  Llamada base (llama al constructor o método del padre) 
         Expr::BaseCall { args } => {
             // Resolver la clase padre desde current_class
             let parent_info = ctx.current_class.as_ref().and_then(|cls| {
@@ -551,13 +554,13 @@ pub fn gen_expr(ctx: &mut Ctx, expr: &Spanned<Expr>) -> String {
             }
         }
 
-        // ── Lambda (con captura de clausura) ────────────────────────────────
+        //  Lambda (con captura de clausura) 
         Expr::Lambda { params, body, .. } => {
-            // 1. Identificar variables libres en el cuerpo que no son parámetros de la lambda
+            //  Identificar variables libres en el cuerpo que no son parámetros de la lambda
             let param_names: Vec<String> = params.iter().map(|p| p.name.clone()).collect();
             let free_vars = collect_free_vars(body, &param_names);
 
-            // 2. Capturar valores actuales de variables libres
+            // Capturar valores actuales de variables libres
             let mut captured: Vec<(String, String)> = Vec::new(); // (nombre, valor_actual)
             for fv in &free_vars {
                 if let Some((ptr, _)) = ctx.get_var(fv) {
@@ -567,7 +570,7 @@ pub fn gen_expr(ctx: &mut Ctx, expr: &Spanned<Expr>) -> String {
                 }
             }
 
-            // 3. Asignar entorno de clausura en el heap: [cap0, cap1, ...]
+            //  Asignar entorno de clausura en el heap: [cap0, cap1, ...]
             let env_size = captured.len();
             let env_ptr = if env_size > 0 {
                 let bytes = env_size as u64 * 8;
@@ -586,7 +589,7 @@ pub fn gen_expr(ctx: &mut Ctx, expr: &Spanned<Expr>) -> String {
                 None
             };
 
-            // 4. Emitir el cuerpo de la función lambda: @__lambda_N(double* %env, double %p0, ...)
+            //  Emitir el cuerpo de la función lambda: @__lambda_N(double* %env, double %p0, ...)
             let fname = format!("__lambda_{}", ctx.counter); ctx.counter += 1;
             let mut sig = String::from("double* %__env");
             for p in params {
@@ -627,7 +630,7 @@ pub fn gen_expr(ctx: &mut Ctx, expr: &Spanned<Expr>) -> String {
             let lambda_code = std::mem::replace(&mut ctx.functions, saved_functions);
             ctx.lambda_defs.push_str(&lambda_code);
 
-            // 5. Codificar clausura como par: { fn_ptr, env_ptr } empaquetado en dos doubles
+            //  Codificar clausura como par: { fn_ptr, env_ptr } empaquetado en dos doubles
             // Por simplicidad empaquetamos [fn_ptr_as_double, env_ptr_as_double] en un buffer en el heap
             let closure_buf = ctx.tmp();
             ctx.emit(&format!("{} = call i8* @malloc(i64 16)", closure_buf)); // 2 * 8 bytes
@@ -664,7 +667,7 @@ pub fn gen_expr(ctx: &mut Ctx, expr: &Spanned<Expr>) -> String {
             d
         }
 
-        // ── Is (verificación de tipo en tiempo de ejecución) ─────────────────
+        //  Is (verificación de tipo en tiempo de ejecución) 
         Expr::Is(expr, type_name) => {
             let v = gen_expr(ctx, expr);
             // Buscar el type-id del tipo destino y todos sus descendientes
@@ -703,7 +706,7 @@ pub fn gen_expr(ctx: &mut Ctx, expr: &Spanned<Expr>) -> String {
             }
         }
 
-        // ── As (cast de tipo con verificación en runtime) ────────────────────
+        //  As (cast de tipo con verificación en runtime) 
         Expr::As(expr, type_name) => {
             let v = gen_expr(ctx, expr);
             // Si el tipo tiene un type-id, verificar y abortar en caso de fallo
@@ -750,7 +753,7 @@ pub fn gen_expr(ctx: &mut Ctx, expr: &Spanned<Expr>) -> String {
             v
         }
 
-        // ── Literal de vector ────────────────────────────────────────────────
+        //  Literal de vector 
         Expr::VectorLiteral(elems) => {
             let count = elems.len();
             let total = (count + 1) as u64 * 8;
@@ -770,7 +773,7 @@ pub fn gen_expr(ctx: &mut Ctx, expr: &Spanned<Expr>) -> String {
             d
         }
 
-        // ── VectorGenerator [expr || var in iterable] ───────────────────────
+        //  VectorGenerator [expr | var in iterable] 
         Expr::VectorGenerator { expr: elem_expr, var, iterable } => {
             let iter_val = gen_expr(ctx, iterable);
 
@@ -818,14 +821,14 @@ pub fn gen_expr(ctx: &mut Ctx, expr: &Spanned<Expr>) -> String {
             d
         }
 
-        // ── Indexing (with bounds checking) ─────────────────────────────────
+        //  Indexing (with bounds checking) 
         Expr::Indexing { obj, index } => {
             let ov = gen_expr(ctx, obj);
             let iv = gen_expr(ctx, index);
             let op = ctx.decode_ptr(&ov, "double*");
             let ii = ctx.tmp(); ctx.emit(&format!("{} = fptosi double {} to i64", ii, iv));
 
-            // ── Verificación de límites: 0 <= ii < len ───────────────────────────
+            //  Verificación de límites: 0 <= ii < len 
             let len_d = ctx.tmp(); ctx.emit(&format!("{} = load double, double* {}", len_d, op));
             let len_i = ctx.tmp(); ctx.emit(&format!("{} = fptosi double {} to i64", len_i, len_d));
             let neg_check = ctx.tmp(); ctx.emit(&format!("{} = icmp slt i64 {}, 0", neg_check, ii));
@@ -848,7 +851,7 @@ pub fn gen_expr(ctx: &mut Ctx, expr: &Spanned<Expr>) -> String {
             v
         }
 
-        // ── Match (Coincidencia de patrones) ─────────────────────────────────
+        //  Match (Coincidencia de patrones) 
         Expr::Match { expr: match_expr, cases, default } => {
             let mv = gen_expr(ctx, match_expr);
             let res_ptr = ctx.tmp();
@@ -907,7 +910,7 @@ pub fn gen_expr(ctx: &mut Ctx, expr: &Spanned<Expr>) -> String {
             r
         }
 
-        // ── Funciones matemáticas integradas ─────────────────────────────────
+        //  Funciones matemáticas integradas 
         Expr::Sqrt(a) => {
             let v = gen_expr(ctx, a);
             let r = ctx.tmp();
@@ -970,7 +973,7 @@ pub fn gen_expr(ctx: &mut Ctx, expr: &Spanned<Expr>) -> String {
         Expr::PI => fmt_double(std::f64::consts::PI),
         Expr::E  => fmt_double(std::f64::consts::E),
 
-        // ── Nodo de error ────────────────────────────────────────────────────
+        //  Nodo de error 
         Expr::Error => { "0.0".into() }
     }
 }

@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 use hulk_compiler::parser::Parser;
 use hulk_compiler::macros::expand_macros;
 use hulk_compiler::ast::optimize::optimize_program;
+use hulk_compiler::ast::transform::transform_implicit_functors;
 use hulk_compiler::codegen::{CodeGenerator, llvm_target::LlvmGenerator};
 
 use std::process::{Command, Stdio};
@@ -47,9 +48,14 @@ fn compile_and_run(code: &str) -> RunResponse {
     };
 
     // 2) Expansión de macros
-    let expanded = expand_macros(program);
+    let mut expanded = expand_macros(program);
 
-    // 3) Chequeo semántico
+    // 3) Transformación de implicit functors (ANTES del semantic check)
+    // Usamos un contexto vacío solo para detectar protocolos del AST
+    let temp_ctx = hulk_compiler::semantic::Context::new();
+    transform_implicit_functors(&mut expanded, &temp_ctx);
+
+    // 4) Chequeo semántico
     let context = match hulk_compiler::semantic::check_program(&expanded) {
         Ok(ctx) => ctx,
         Err(errors) => {
@@ -68,14 +74,14 @@ fn compile_and_run(code: &str) -> RunResponse {
         }
     };
 
-    // 4) Optimización
+    // 5) Optimización
     let optimized = optimize_program(expanded);
 
-    // 5) Generación LLVM IR
+    // 6) Generación LLVM IR
     let generator = LlvmGenerator;
     let llvm_code = generator.generate(&optimized, &context);
 
-    // 6) Escribir IR a archivo temporal
+    // 7) Escribir IR a archivo temporal
     let temp_dir = std::env::temp_dir();
     let ll_path = temp_dir.join("hulk_playground.ll");
     let bin_path = temp_dir.join("hulk_playground_bin");
@@ -90,7 +96,7 @@ fn compile_and_run(code: &str) -> RunResponse {
         };
     }
 
-    // 7) Generar LLVM IR optimizado para mostrar
+    //  Generar LLVM IR optimizado para mostrar
     let optimized_ll_path = temp_dir.join("hulk_playground_opt.ll");
     let opt_result = Command::new("clang")
         .args([
@@ -117,7 +123,7 @@ fn compile_and_run(code: &str) -> RunResponse {
         llvm_code.clone()
     };
 
-    // 8) Compilar a binario ejecutable
+    // Compilar a binario ejecutable
     let clang = Command::new("clang")
         .args([
             "-O3",                          // Máxima optimización
@@ -156,7 +162,7 @@ fn compile_and_run(code: &str) -> RunResponse {
         _ => {}
     }
 
-    // 9) Ejecutar con timeout de 10 segundos
+    //  Ejecutar con timeout de 10 segundos
     let bin_str = bin_path.to_str().unwrap().to_string();
     let (tx, rx) = std::sync::mpsc::channel();
 

@@ -15,18 +15,12 @@ use types::{TypeKind, MethodInfo};
 use context::conforms_to;
 use std::collections::HashSet;
 
-/// Función principal del análisis semántico
-/// Realiza el chequeo en múltiples pasadas:
-/// 1. Recolectar tipos y protocolos
-/// 2. Establecer jerarquía de herencia
-/// 3. Recolectar miembros (atributos y métodos)
-/// 4. Chequear cuerpos de funciones y métodos
 
 pub fn check_program(program: &Program) -> Result<Context, Vec<SemanticError>> {
     let mut context = Context::new();
     let mut errors = Vec::new();
 
-    // --- Pasada 1: Recolectar nombres de Tipos y Protocolos ---
+    //  Recolectar nombres de Tipos y Protocolos 
     for decl in &program.declarations {
         match decl {
             Declaration::Type(type_decl) => {
@@ -45,7 +39,7 @@ pub fn check_program(program: &Program) -> Result<Context, Vec<SemanticError>> {
     }
     if !errors.is_empty() { return Err(errors); }
 
-    // --- Pasada 2: Establecer Jerarquía (Padres) ---
+    //  Establecer Jerarquía (Padres)
     for decl in &program.declarations {
         match decl {
             Declaration::Type(type_decl) => {
@@ -112,9 +106,9 @@ pub fn check_program(program: &Program) -> Result<Context, Vec<SemanticError>> {
     
     if !errors.is_empty() { return Err(errors); }
 
-    // --- Pasada 3: Recolectar Miembros (Métodos/Atributos) y Funciones Globales ---
+    //  Recolectar Miembros (Métodos/Atributos) y Funciones Globales
     
-    // 3a. Funciones Globales
+    // Funciones Globales
     for decl in &program.declarations {
         if let Declaration::Function(func_decl) = decl {
             let mut params = Vec::new();
@@ -147,7 +141,7 @@ pub fn check_program(program: &Program) -> Result<Context, Vec<SemanticError>> {
         }
     }
 
-    // 3a-bis. Macros (def) – register as functions for semantic analysis
+    // Macros (def) – register as functions for semantic analysis
     for decl in &program.declarations {
         if let Declaration::Macro(macro_decl) = decl {
             let mut params = Vec::new();
@@ -181,7 +175,7 @@ pub fn check_program(program: &Program) -> Result<Context, Vec<SemanticError>> {
         }
     }
     
-    // 3b. Miembros de Tipos
+    // Miembros de Tipos
     for decl in &program.declarations {
          if let Declaration::Type(type_decl) = decl {
              let current_type_rc = context.get_type(&type_decl.name).unwrap();
@@ -301,8 +295,7 @@ pub fn check_program(program: &Program) -> Result<Context, Vec<SemanticError>> {
     
     if !errors.is_empty() { return Err(errors); }
 
-    // --- Pasada 4: Chequear Cuerpos (Funciones y Métodos) ---
-    
+    // Chequear Cuerpos (Funciones y Métodos)     
     // Chequear Expresión Global
     {
         let mut checker = TypeChecker::new(&context);
@@ -355,7 +348,7 @@ pub fn check_program(program: &Program) -> Result<Context, Vec<SemanticError>> {
         if let Declaration::Type(type_decl) = decl {
             let type_rc = context.get_type(&type_decl.name).unwrap();
             
-            // 1. Inicialización de Atributos
+            // Inicialización de Atributos
             // Los atributos pueden usar argumentos del constructor en su inicialización
             for attr in &type_decl.attributes {
                  let mut checker = TypeChecker::new(&context);
@@ -377,7 +370,7 @@ pub fn check_program(program: &Program) -> Result<Context, Vec<SemanticError>> {
                  }
             }
 
-            // 2. Cuerpos de Métodos
+            // Cuerpos de Métodos
             for method in &type_decl.methods {
                 let mut checker = TypeChecker::new(&context);
                 let method_info = type_rc.borrow().get_method(&method.name).unwrap();
