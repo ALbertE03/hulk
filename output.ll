@@ -36,6 +36,26 @@ declare double @llvm.floor.f64(double)
 @.rand_seeded = global i1 false
 %__Vector = type { i64, double*, double, double }
 
+@.slit_11 = private unnamed_addr constant [20 x i8] c"Vector de números:\00"
+@.slit_19 = private unnamed_addr constant [17 x i8] c"Primer elemento:\00"
+@.slit_45 = private unnamed_addr constant [18 x i8] c"Último elemento:\00"
+@.slit_126 = private unnamed_addr constant [11 x i8] c"Cuadrados:\00"
+@.slit_134 = private unnamed_addr constant [15 x i8] c"Cuadrado de 3:\00"
+@.slit_166 = private unnamed_addr constant [15 x i8] c"Vector vacío:\00"
+@.slit_175 = private unnamed_addr constant [6 x i8] c"hello\00"
+@.slit_180 = private unnamed_addr constant [20 x i8] c"Number como Object:\00"
+@.slit_187 = private unnamed_addr constant [20 x i8] c"String como Object:\00"
+@.slit_194 = private unnamed_addr constant [6 x i8] c"hello\00"
+@.slit_201 = private unnamed_addr constant [21 x i8] c"Boolean como Object:\00"
+@.slit_305 = private unnamed_addr constant [24 x i8] c"Triple transformación:\00"
+@.slit_312 = private unnamed_addr constant [10 x i8] c"Original:\00"
+@.slit_320 = private unnamed_addr constant [11 x i8] c"Duplicado:\00"
+@.slit_328 = private unnamed_addr constant [14 x i8] c"Incrementado:\00"
+@.slit_337 = private unnamed_addr constant [4 x i8] c"---\00"
+@.slit_345 = private unnamed_addr constant [4 x i8] c"---\00"
+@.slit_353 = private unnamed_addr constant [4 x i8] c"---\00"
+@.slit_361 = private unnamed_addr constant [4 x i8] c"---\00"
+@.slit_369 = private unnamed_addr constant [39 x i8] c"Todos los tests pasaron correctamente!\00"
 
 define i8* @__Vector_new(double* %data, double %length) {
 entry:
@@ -110,7 +130,7 @@ entry:
   ret double %value
 }
 
-define double @__hulk_main() {
+define double @test_number_vector() {
 entry:
   %t0 = call i8* @malloc(i64 40)
   %t1 = bitcast i8* %t0 to double*
@@ -129,254 +149,501 @@ entry:
   %t9 = bitcast i64 %t8 to double
   %t10 = alloca double
   store double %t9, double* %t10
-  %t11 = load double, double* %t10
-  call void @__hulk_print_vector(double %t11)
-  %t12 = load double, double* %t10
-  %t13 = bitcast double %t12 to i64
-  %t14 = alloca i64
-  store i64 %t13, i64* %t14
-  %t15 = load i64, i64* %t14
-  %t16 = inttoptr i64 %t15 to i8*
-  %t17 = bitcast i8* %t16 to %__Vector*
-  %t18 = getelementptr inbounds %__Vector, %__Vector* %t17, i32 0, i32 2
-  %t19 = load double, double* %t18
-  %t20 = fptosi double %t19 to i64
-  %t21 = fptosi double 0.0e0 to i64
-  %t22 = icmp slt i64 %t21, 0
-  %t23 = icmp sge i64 %t21, %t20
-  %t24 = or i1 %t22, %t23
-  br i1 %t24, label %idx_oob_26, label %idx_ok_25
-idx_oob_26:
+  %t12 = ptrtoint i8* getelementptr inbounds ([20 x i8], [20 x i8]* @.slit_11, i64 0, i64 0) to i64
+  %t13 = bitcast i64 %t12 to double
+  %t14 = bitcast double %t13 to i64
+  %t15 = alloca i64
+  store i64 %t14, i64* %t15
+  %t16 = load i64, i64* %t15
+  %t17 = inttoptr i64 %t16 to i8*
+  call i32 @puts(i8* %t17)
+  %t18 = load double, double* %t10
+  call void @__hulk_print_vector(double %t18)
+  %t20 = ptrtoint i8* getelementptr inbounds ([17 x i8], [17 x i8]* @.slit_19, i64 0, i64 0) to i64
+  %t21 = bitcast i64 %t20 to double
+  %t22 = bitcast double %t21 to i64
+  %t23 = alloca i64
+  store i64 %t22, i64* %t23
+  %t24 = load i64, i64* %t23
+  %t25 = inttoptr i64 %t24 to i8*
+  call i32 @puts(i8* %t25)
+  %t26 = load double, double* %t10
+  %t27 = bitcast double %t26 to i64
+  %t28 = alloca i64
+  store i64 %t27, i64* %t28
+  %t29 = load i64, i64* %t28
+  %t30 = inttoptr i64 %t29 to i8*
+  %t31 = bitcast i8* %t30 to %__Vector*
+  %t32 = getelementptr inbounds %__Vector, %__Vector* %t31, i32 0, i32 2
+  %t33 = load double, double* %t32
+  %t34 = fptosi double %t33 to i64
+  %t35 = fptosi double 0.0e0 to i64
+  %t36 = icmp slt i64 %t35, 0
+  %t37 = icmp sge i64 %t35, %t34
+  %t38 = or i1 %t36, %t37
+  br i1 %t38, label %idx_oob_40, label %idx_ok_39
+idx_oob_40:
   call i32 (i8*, ...) @printf(i8* getelementptr inbounds ([36 x i8], [36 x i8]* @.oob_msg, i64 0, i64 0))
   call void @abort()
   unreachable
-idx_ok_25:
-  %t27 = getelementptr inbounds %__Vector, %__Vector* %t17, i32 0, i32 1
-  %t28 = load double*, double** %t27
-  %t29 = getelementptr double, double* %t28, i64 %t21
-  %t30 = load double, double* %t29
-  call void @__hulk_print_val(double %t30)
-  %t31 = load double, double* %t10
-  %t32 = bitcast double %t31 to i64
-  %t33 = alloca i64
-  store i64 %t32, i64* %t33
-  %t34 = load i64, i64* %t33
-  %t35 = inttoptr i64 %t34 to i8*
-  %t36 = bitcast i8* %t35 to %__Vector*
-  %t37 = getelementptr inbounds %__Vector, %__Vector* %t36, i32 0, i32 2
-  %t38 = load double, double* %t37
-  %t39 = fptosi double %t38 to i64
-  %t40 = fptosi double 4.0e0 to i64
-  %t41 = icmp slt i64 %t40, 0
-  %t42 = icmp sge i64 %t40, %t39
-  %t43 = or i1 %t41, %t42
-  br i1 %t43, label %idx_oob_45, label %idx_ok_44
-idx_oob_45:
+idx_ok_39:
+  %t41 = getelementptr inbounds %__Vector, %__Vector* %t31, i32 0, i32 1
+  %t42 = load double*, double** %t41
+  %t43 = getelementptr double, double* %t42, i64 %t35
+  %t44 = load double, double* %t43
+  call void @__hulk_print_val(double %t44)
+  %t46 = ptrtoint i8* getelementptr inbounds ([18 x i8], [18 x i8]* @.slit_45, i64 0, i64 0) to i64
+  %t47 = bitcast i64 %t46 to double
+  %t48 = bitcast double %t47 to i64
+  %t49 = alloca i64
+  store i64 %t48, i64* %t49
+  %t50 = load i64, i64* %t49
+  %t51 = inttoptr i64 %t50 to i8*
+  call i32 @puts(i8* %t51)
+  %t52 = load double, double* %t10
+  %t53 = bitcast double %t52 to i64
+  %t54 = alloca i64
+  store i64 %t53, i64* %t54
+  %t55 = load i64, i64* %t54
+  %t56 = inttoptr i64 %t55 to i8*
+  %t57 = bitcast i8* %t56 to %__Vector*
+  %t58 = getelementptr inbounds %__Vector, %__Vector* %t57, i32 0, i32 2
+  %t59 = load double, double* %t58
+  %t60 = fptosi double %t59 to i64
+  %t61 = fptosi double 4.0e0 to i64
+  %t62 = icmp slt i64 %t61, 0
+  %t63 = icmp sge i64 %t61, %t60
+  %t64 = or i1 %t62, %t63
+  br i1 %t64, label %idx_oob_66, label %idx_ok_65
+idx_oob_66:
   call i32 (i8*, ...) @printf(i8* getelementptr inbounds ([36 x i8], [36 x i8]* @.oob_msg, i64 0, i64 0))
   call void @abort()
   unreachable
-idx_ok_44:
-  %t46 = getelementptr inbounds %__Vector, %__Vector* %t36, i32 0, i32 1
-  %t47 = load double*, double** %t46
-  %t48 = getelementptr double, double* %t47, i64 %t40
-  %t49 = load double, double* %t48
-  call void @__hulk_print_val(double %t49)
-  %t50 = call i8* @malloc(i64 80)
-  %t51 = bitcast i8* %t50 to double*
-  %t52 = getelementptr double, double* %t51, i64 0
-  store double 1.0e0, double* %t52
-  %t53 = getelementptr double, double* %t51, i64 1
-  store double 2.0e0, double* %t53
-  %t54 = getelementptr double, double* %t51, i64 2
-  store double 3.0e0, double* %t54
-  %t55 = getelementptr double, double* %t51, i64 3
-  store double 4.0e0, double* %t55
-  %t56 = getelementptr double, double* %t51, i64 4
-  store double 5.0e0, double* %t56
-  %t57 = getelementptr double, double* %t51, i64 5
-  store double 6.0e0, double* %t57
-  %t58 = getelementptr double, double* %t51, i64 6
-  store double 7.0e0, double* %t58
-  %t59 = getelementptr double, double* %t51, i64 7
-  store double 8.0e0, double* %t59
-  %t60 = getelementptr double, double* %t51, i64 8
-  store double 9.0e0, double* %t60
-  %t61 = getelementptr double, double* %t51, i64 9
-  store double 1.0e1, double* %t61
-  %t62 = call i8* @__Vector_new(double* %t51, double 1.0e1)
-  %t63 = ptrtoint i8* %t62 to i64
-  %t64 = bitcast i64 %t63 to double
-  %t65 = alloca double
-  store double %t64, double* %t65
-  %t66 = load double, double* %t65
-  %t67 = bitcast double %t66 to i64
-  %t68 = alloca i64
-  store i64 %t67, i64* %t68
-  %t69 = load i64, i64* %t68
-  %t70 = inttoptr i64 %t69 to i8*
-  %t71 = mul i64 101, 8
-  %t72 = call i8* @malloc(i64 %t71)
-  %t73 = bitcast i8* %t72 to double*
-  %t74 = alloca i64
-  store i64 0, i64* %t74
-  %t75 = alloca i64
-  store i64 100, i64* %t75
-  %t76 = alloca double*
-  store double* %t73, double** %t76
-  br label %vgc_77
-vgc_77:
-  %t80 = call double @__Vector_next(i8* %t70)
-  %t81 = fcmp one double %t80, 0.0
-  br i1 %t81, label %vgb_78, label %vge_79
-vgb_78:
-  %t82 = call double @__Vector_get_current(i8* %t70)
-  %t83 = alloca double
-  store double %t82, double* %t83
-  %t84 = load double, double* %t83
-  %t85 = load double, double* %t83
-  %t86 = fmul double %t84, %t85
-  %t87 = load i64, i64* %t74
-  %t88 = load i64, i64* %t75
-  %t89 = icmp sge i64 %t87, %t88
-  br i1 %t89, label %vg_grow_90, label %vg_store_91
-vg_grow_90:
-  %t92 = mul i64 %t88, 2
-  %t93 = add i64 %t92, 1
-  %t94 = mul i64 %t93, 8
-  %t95 = load double*, double** %t76
-  %t96 = bitcast double* %t95 to i8*
-  %t97 = call i8* @realloc(i8* %t96, i64 %t94)
-  %t98 = bitcast i8* %t97 to double*
-  store double* %t98, double** %t76
-  store i64 %t92, i64* %t75
-  br label %vg_store_91
-vg_store_91:
-  %t99 = load double*, double** %t76
-  %t100 = add i64 %t87, 1
-  %t101 = getelementptr double, double* %t99, i64 %t100
-  store double %t86, double* %t101
-  %t102 = add i64 %t87, 1
-  store i64 %t102, i64* %t74
-  br label %vgc_77
-vge_79:
-  %t103 = load i64, i64* %t74
-  %t104 = sitofp i64 %t103 to double
-  %t105 = load double*, double** %t76
-  %t106 = call i8* @__Vector_new(double* %t105, double %t104)
-  %t107 = ptrtoint i8* %t106 to i64
-  %t108 = bitcast i64 %t107 to double
-  %t109 = alloca double
-  store double %t108, double* %t109
-  %t110 = load double, double* %t109
-  call void @__hulk_print_vector(double %t110)
-  %t111 = load double, double* %t109
-  %t112 = bitcast double %t111 to i64
-  %t113 = alloca i64
-  store i64 %t112, i64* %t113
-  %t114 = load i64, i64* %t113
-  %t115 = inttoptr i64 %t114 to i8*
-  %t116 = bitcast i8* %t115 to %__Vector*
-  %t117 = getelementptr inbounds %__Vector, %__Vector* %t116, i32 0, i32 2
-  %t118 = load double, double* %t117
-  %t119 = fptosi double %t118 to i64
-  %t120 = fptosi double 5.0e0 to i64
-  %t121 = icmp slt i64 %t120, 0
-  %t122 = icmp sge i64 %t120, %t119
-  %t123 = or i1 %t121, %t122
-  br i1 %t123, label %idx_oob_125, label %idx_ok_124
-idx_oob_125:
+idx_ok_65:
+  %t67 = getelementptr inbounds %__Vector, %__Vector* %t57, i32 0, i32 1
+  %t68 = load double*, double** %t67
+  %t69 = getelementptr double, double* %t68, i64 %t61
+  %t70 = load double, double* %t69
+  call void @__hulk_print_val(double %t70)
+  ret double 0.0e0
+}
+
+define double @test_comprehension() {
+entry:
+  %t71 = call i8* @malloc(i64 40)
+  %t72 = bitcast i8* %t71 to double*
+  %t73 = getelementptr double, double* %t72, i64 0
+  store double 1.0e0, double* %t73
+  %t74 = getelementptr double, double* %t72, i64 1
+  store double 2.0e0, double* %t74
+  %t75 = getelementptr double, double* %t72, i64 2
+  store double 3.0e0, double* %t75
+  %t76 = getelementptr double, double* %t72, i64 3
+  store double 4.0e0, double* %t76
+  %t77 = getelementptr double, double* %t72, i64 4
+  store double 5.0e0, double* %t77
+  %t78 = call i8* @__Vector_new(double* %t72, double 5.0e0)
+  %t79 = ptrtoint i8* %t78 to i64
+  %t80 = bitcast i64 %t79 to double
+  %t81 = alloca double
+  store double %t80, double* %t81
+  %t82 = load double, double* %t81
+  %t83 = bitcast double %t82 to i64
+  %t84 = alloca i64
+  store i64 %t83, i64* %t84
+  %t85 = load i64, i64* %t84
+  %t86 = inttoptr i64 %t85 to i8*
+  %t87 = mul i64 101, 8
+  %t88 = call i8* @malloc(i64 %t87)
+  %t89 = bitcast i8* %t88 to double*
+  %t90 = alloca i64
+  store i64 0, i64* %t90
+  %t91 = alloca i64
+  store i64 100, i64* %t91
+  %t92 = alloca double*
+  store double* %t89, double** %t92
+  br label %vgc_93
+vgc_93:
+  %t96 = call double @__Vector_next(i8* %t86)
+  %t97 = fcmp one double %t96, 0.0
+  br i1 %t97, label %vgb_94, label %vge_95
+vgb_94:
+  %t98 = call double @__Vector_get_current(i8* %t86)
+  %t99 = alloca double
+  store double %t98, double* %t99
+  %t100 = load double, double* %t99
+  %t101 = load double, double* %t99
+  %t102 = fmul double %t100, %t101
+  %t103 = load i64, i64* %t90
+  %t104 = load i64, i64* %t91
+  %t105 = icmp sge i64 %t103, %t104
+  br i1 %t105, label %vg_grow_106, label %vg_store_107
+vg_grow_106:
+  %t108 = mul i64 %t104, 2
+  %t109 = add i64 %t108, 1
+  %t110 = mul i64 %t109, 8
+  %t111 = load double*, double** %t92
+  %t112 = bitcast double* %t111 to i8*
+  %t113 = call i8* @realloc(i8* %t112, i64 %t110)
+  %t114 = bitcast i8* %t113 to double*
+  store double* %t114, double** %t92
+  store i64 %t108, i64* %t91
+  br label %vg_store_107
+vg_store_107:
+  %t115 = load double*, double** %t92
+  %t116 = add i64 %t103, 1
+  %t117 = getelementptr double, double* %t115, i64 %t116
+  store double %t102, double* %t117
+  %t118 = add i64 %t103, 1
+  store i64 %t118, i64* %t90
+  br label %vgc_93
+vge_95:
+  %t119 = load i64, i64* %t90
+  %t120 = sitofp i64 %t119 to double
+  %t121 = load double*, double** %t92
+  %t122 = call i8* @__Vector_new(double* %t121, double %t120)
+  %t123 = ptrtoint i8* %t122 to i64
+  %t124 = bitcast i64 %t123 to double
+  %t125 = alloca double
+  store double %t124, double* %t125
+  %t127 = ptrtoint i8* getelementptr inbounds ([11 x i8], [11 x i8]* @.slit_126, i64 0, i64 0) to i64
+  %t128 = bitcast i64 %t127 to double
+  %t129 = bitcast double %t128 to i64
+  %t130 = alloca i64
+  store i64 %t129, i64* %t130
+  %t131 = load i64, i64* %t130
+  %t132 = inttoptr i64 %t131 to i8*
+  call i32 @puts(i8* %t132)
+  %t133 = load double, double* %t125
+  call void @__hulk_print_vector(double %t133)
+  %t135 = ptrtoint i8* getelementptr inbounds ([15 x i8], [15 x i8]* @.slit_134, i64 0, i64 0) to i64
+  %t136 = bitcast i64 %t135 to double
+  %t137 = bitcast double %t136 to i64
+  %t138 = alloca i64
+  store i64 %t137, i64* %t138
+  %t139 = load i64, i64* %t138
+  %t140 = inttoptr i64 %t139 to i8*
+  call i32 @puts(i8* %t140)
+  %t141 = load double, double* %t125
+  %t142 = bitcast double %t141 to i64
+  %t143 = alloca i64
+  store i64 %t142, i64* %t143
+  %t144 = load i64, i64* %t143
+  %t145 = inttoptr i64 %t144 to i8*
+  %t146 = bitcast i8* %t145 to %__Vector*
+  %t147 = getelementptr inbounds %__Vector, %__Vector* %t146, i32 0, i32 2
+  %t148 = load double, double* %t147
+  %t149 = fptosi double %t148 to i64
+  %t150 = fptosi double 2.0e0 to i64
+  %t151 = icmp slt i64 %t150, 0
+  %t152 = icmp sge i64 %t150, %t149
+  %t153 = or i1 %t151, %t152
+  br i1 %t153, label %idx_oob_155, label %idx_ok_154
+idx_oob_155:
   call i32 (i8*, ...) @printf(i8* getelementptr inbounds ([36 x i8], [36 x i8]* @.oob_msg, i64 0, i64 0))
   call void @abort()
   unreachable
-idx_ok_124:
-  %t126 = getelementptr inbounds %__Vector, %__Vector* %t116, i32 0, i32 1
-  %t127 = load double*, double** %t126
-  %t128 = getelementptr double, double* %t127, i64 %t120
-  %t129 = load double, double* %t128
-  call void @__hulk_print_val(double %t129)
-  %t130 = call i8* @malloc(i64 24)
-  %t131 = bitcast i8* %t130 to double*
-  %t132 = getelementptr double, double* %t131, i64 0
-  store double 1.0e1, double* %t132
-  %t133 = getelementptr double, double* %t131, i64 1
-  store double 2.0e1, double* %t133
-  %t134 = getelementptr double, double* %t131, i64 2
-  store double 3.0e1, double* %t134
-  %t135 = call i8* @__Vector_new(double* %t131, double 3.0e0)
-  %t136 = ptrtoint i8* %t135 to i64
-  %t137 = bitcast i64 %t136 to double
-  %t138 = alloca double
-  store double %t137, double* %t138
-  %t139 = load double, double* %t138
-  %t140 = bitcast double %t139 to i64
-  %t141 = alloca i64
-  store i64 %t140, i64* %t141
-  %t142 = load i64, i64* %t141
-  %t143 = inttoptr i64 %t142 to i8*
-  %t144 = mul i64 101, 8
-  %t145 = call i8* @malloc(i64 %t144)
-  %t146 = bitcast i8* %t145 to double*
-  %t147 = alloca i64
-  store i64 0, i64* %t147
-  %t148 = alloca i64
-  store i64 100, i64* %t148
-  %t149 = alloca double*
-  store double* %t146, double** %t149
-  br label %vgc_150
-vgc_150:
-  %t153 = call double @__Vector_next(i8* %t143)
-  %t154 = fcmp one double %t153, 0.0
-  br i1 %t154, label %vgb_151, label %vge_152
-vgb_151:
-  %t155 = call double @__Vector_get_current(i8* %t143)
-  %t156 = alloca double
-  store double %t155, double* %t156
-  %t157 = load double, double* %t156
-  %t158 = fmul double %t157, 2.0e0
-  %t159 = load i64, i64* %t147
-  %t160 = load i64, i64* %t148
-  %t161 = icmp sge i64 %t159, %t160
-  br i1 %t161, label %vg_grow_162, label %vg_store_163
-vg_grow_162:
-  %t164 = mul i64 %t160, 2
-  %t165 = add i64 %t164, 1
-  %t166 = mul i64 %t165, 8
-  %t167 = load double*, double** %t149
-  %t168 = bitcast double* %t167 to i8*
-  %t169 = call i8* @realloc(i8* %t168, i64 %t166)
-  %t170 = bitcast i8* %t169 to double*
-  store double* %t170, double** %t149
-  store i64 %t164, i64* %t148
-  br label %vg_store_163
-vg_store_163:
-  %t171 = load double*, double** %t149
-  %t172 = add i64 %t159, 1
-  %t173 = getelementptr double, double* %t171, i64 %t172
-  store double %t158, double* %t173
-  %t174 = add i64 %t159, 1
-  store i64 %t174, i64* %t147
-  br label %vgc_150
-vge_152:
-  %t175 = load i64, i64* %t147
-  %t176 = sitofp i64 %t175 to double
-  %t177 = load double*, double** %t149
-  %t178 = call i8* @__Vector_new(double* %t177, double %t176)
-  %t179 = ptrtoint i8* %t178 to i64
-  %t180 = bitcast i64 %t179 to double
-  %t181 = alloca double
-  store double %t180, double* %t181
-  %t182 = load double, double* %t181
-  call void @__hulk_print_vector(double %t182)
-  %t183 = call i8* @malloc(i64 0)
-  %t184 = bitcast i8* %t183 to double*
-  %t185 = call i8* @__Vector_new(double* %t184, double 0.0e0)
-  %t186 = ptrtoint i8* %t185 to i64
-  %t187 = bitcast i64 %t186 to double
-  %t188 = alloca double
-  store double %t187, double* %t188
-  %t189 = load double, double* %t188
-  call void @__hulk_print_vector(double %t189)
-  ret double 4.2e1
+idx_ok_154:
+  %t156 = getelementptr inbounds %__Vector, %__Vector* %t146, i32 0, i32 1
+  %t157 = load double*, double** %t156
+  %t158 = getelementptr double, double* %t157, i64 %t150
+  %t159 = load double, double* %t158
+  call void @__hulk_print_val(double %t159)
+  ret double 0.0e0
+}
+
+define double @test_empty_vector() {
+entry:
+  %t160 = call i8* @malloc(i64 0)
+  %t161 = bitcast i8* %t160 to double*
+  %t162 = call i8* @__Vector_new(double* %t161, double 0.0e0)
+  %t163 = ptrtoint i8* %t162 to i64
+  %t164 = bitcast i64 %t163 to double
+  %t165 = alloca double
+  store double %t164, double* %t165
+  %t167 = ptrtoint i8* getelementptr inbounds ([15 x i8], [15 x i8]* @.slit_166, i64 0, i64 0) to i64
+  %t168 = bitcast i64 %t167 to double
+  %t169 = bitcast double %t168 to i64
+  %t170 = alloca i64
+  store i64 %t169, i64* %t170
+  %t171 = load i64, i64* %t170
+  %t172 = inttoptr i64 %t171 to i8*
+  call i32 @puts(i8* %t172)
+  %t173 = load double, double* %t165
+  call void @__hulk_print_vector(double %t173)
+  ret double 0.0e0
+}
+
+define double @test_conforming() {
+entry:
+  %t174 = alloca double
+  store double 4.2e1, double* %t174
+  %t176 = ptrtoint i8* getelementptr inbounds ([6 x i8], [6 x i8]* @.slit_175, i64 0, i64 0) to i64
+  %t177 = bitcast i64 %t176 to double
+  %t178 = alloca double
+  store double %t177, double* %t178
+  %t179 = alloca double
+  store double 1.0, double* %t179
+  %t181 = ptrtoint i8* getelementptr inbounds ([20 x i8], [20 x i8]* @.slit_180, i64 0, i64 0) to i64
+  %t182 = bitcast i64 %t181 to double
+  %t183 = bitcast double %t182 to i64
+  %t184 = alloca i64
+  store i64 %t183, i64* %t184
+  %t185 = load i64, i64* %t184
+  %t186 = inttoptr i64 %t185 to i8*
+  call i32 @puts(i8* %t186)
+  call i32 (i8*, ...) @printf(i8* getelementptr inbounds ([5 x i8], [5 x i8]* @.fmt_num, i64 0, i64 0), double 4.2e1)
+  call i32 @puts(i8* getelementptr inbounds ([1 x i8], [1 x i8]* @.empty_s, i64 0, i64 0))
+  %t188 = ptrtoint i8* getelementptr inbounds ([20 x i8], [20 x i8]* @.slit_187, i64 0, i64 0) to i64
+  %t189 = bitcast i64 %t188 to double
+  %t190 = bitcast double %t189 to i64
+  %t191 = alloca i64
+  store i64 %t190, i64* %t191
+  %t192 = load i64, i64* %t191
+  %t193 = inttoptr i64 %t192 to i8*
+  call i32 @puts(i8* %t193)
+  %t195 = ptrtoint i8* getelementptr inbounds ([6 x i8], [6 x i8]* @.slit_194, i64 0, i64 0) to i64
+  %t196 = bitcast i64 %t195 to double
+  %t197 = bitcast double %t196 to i64
+  %t198 = alloca i64
+  store i64 %t197, i64* %t198
+  %t199 = load i64, i64* %t198
+  %t200 = inttoptr i64 %t199 to i8*
+  call i32 @puts(i8* %t200)
+  %t202 = ptrtoint i8* getelementptr inbounds ([21 x i8], [21 x i8]* @.slit_201, i64 0, i64 0) to i64
+  %t203 = bitcast i64 %t202 to double
+  %t204 = bitcast double %t203 to i64
+  %t205 = alloca i64
+  store i64 %t204, i64* %t205
+  %t206 = load i64, i64* %t205
+  %t207 = inttoptr i64 %t206 to i8*
+  call i32 @puts(i8* %t207)
+  %t208 = fcmp one double 1.0, 0.0
+  %t209 = select i1 %t208, i8* getelementptr inbounds ([5 x i8], [5 x i8]* @.true_s, i64 0, i64 0), i8* getelementptr inbounds ([6 x i8], [6 x i8]* @.false_s, i64 0, i64 0)
+  call i32 @puts(i8* %t209)
+  ret double 0.0e0
+}
+
+define double @test_nested_comprehension() {
+entry:
+  %t210 = call i8* @malloc(i64 24)
+  %t211 = bitcast i8* %t210 to double*
+  %t212 = getelementptr double, double* %t211, i64 0
+  store double 1.0e0, double* %t212
+  %t213 = getelementptr double, double* %t211, i64 1
+  store double 2.0e0, double* %t213
+  %t214 = getelementptr double, double* %t211, i64 2
+  store double 3.0e0, double* %t214
+  %t215 = call i8* @__Vector_new(double* %t211, double 3.0e0)
+  %t216 = ptrtoint i8* %t215 to i64
+  %t217 = bitcast i64 %t216 to double
+  %t218 = alloca double
+  store double %t217, double* %t218
+  %t219 = load double, double* %t218
+  %t220 = bitcast double %t219 to i64
+  %t221 = alloca i64
+  store i64 %t220, i64* %t221
+  %t222 = load i64, i64* %t221
+  %t223 = inttoptr i64 %t222 to i8*
+  %t224 = mul i64 101, 8
+  %t225 = call i8* @malloc(i64 %t224)
+  %t226 = bitcast i8* %t225 to double*
+  %t227 = alloca i64
+  store i64 0, i64* %t227
+  %t228 = alloca i64
+  store i64 100, i64* %t228
+  %t229 = alloca double*
+  store double* %t226, double** %t229
+  br label %vgc_230
+vgc_230:
+  %t233 = call double @__Vector_next(i8* %t223)
+  %t234 = fcmp one double %t233, 0.0
+  br i1 %t234, label %vgb_231, label %vge_232
+vgb_231:
+  %t235 = call double @__Vector_get_current(i8* %t223)
+  %t236 = alloca double
+  store double %t235, double* %t236
+  %t237 = load double, double* %t236
+  %t238 = fmul double %t237, 2.0e0
+  %t239 = load i64, i64* %t227
+  %t240 = load i64, i64* %t228
+  %t241 = icmp sge i64 %t239, %t240
+  br i1 %t241, label %vg_grow_242, label %vg_store_243
+vg_grow_242:
+  %t244 = mul i64 %t240, 2
+  %t245 = add i64 %t244, 1
+  %t246 = mul i64 %t245, 8
+  %t247 = load double*, double** %t229
+  %t248 = bitcast double* %t247 to i8*
+  %t249 = call i8* @realloc(i8* %t248, i64 %t246)
+  %t250 = bitcast i8* %t249 to double*
+  store double* %t250, double** %t229
+  store i64 %t244, i64* %t228
+  br label %vg_store_243
+vg_store_243:
+  %t251 = load double*, double** %t229
+  %t252 = add i64 %t239, 1
+  %t253 = getelementptr double, double* %t251, i64 %t252
+  store double %t238, double* %t253
+  %t254 = add i64 %t239, 1
+  store i64 %t254, i64* %t227
+  br label %vgc_230
+vge_232:
+  %t255 = load i64, i64* %t227
+  %t256 = sitofp i64 %t255 to double
+  %t257 = load double*, double** %t229
+  %t258 = call i8* @__Vector_new(double* %t257, double %t256)
+  %t259 = ptrtoint i8* %t258 to i64
+  %t260 = bitcast i64 %t259 to double
+  %t261 = alloca double
+  store double %t260, double* %t261
+  %t262 = load double, double* %t261
+  %t263 = bitcast double %t262 to i64
+  %t264 = alloca i64
+  store i64 %t263, i64* %t264
+  %t265 = load i64, i64* %t264
+  %t266 = inttoptr i64 %t265 to i8*
+  %t267 = mul i64 101, 8
+  %t268 = call i8* @malloc(i64 %t267)
+  %t269 = bitcast i8* %t268 to double*
+  %t270 = alloca i64
+  store i64 0, i64* %t270
+  %t271 = alloca i64
+  store i64 100, i64* %t271
+  %t272 = alloca double*
+  store double* %t269, double** %t272
+  br label %vgc_273
+vgc_273:
+  %t276 = call double @__Vector_next(i8* %t266)
+  %t277 = fcmp one double %t276, 0.0
+  br i1 %t277, label %vgb_274, label %vge_275
+vgb_274:
+  %t278 = call double @__Vector_get_current(i8* %t266)
+  %t279 = alloca double
+  store double %t278, double* %t279
+  %t280 = load double, double* %t279
+  %t281 = fadd double %t280, 1.0e0
+  %t282 = load i64, i64* %t270
+  %t283 = load i64, i64* %t271
+  %t284 = icmp sge i64 %t282, %t283
+  br i1 %t284, label %vg_grow_285, label %vg_store_286
+vg_grow_285:
+  %t287 = mul i64 %t283, 2
+  %t288 = add i64 %t287, 1
+  %t289 = mul i64 %t288, 8
+  %t290 = load double*, double** %t272
+  %t291 = bitcast double* %t290 to i8*
+  %t292 = call i8* @realloc(i8* %t291, i64 %t289)
+  %t293 = bitcast i8* %t292 to double*
+  store double* %t293, double** %t272
+  store i64 %t287, i64* %t271
+  br label %vg_store_286
+vg_store_286:
+  %t294 = load double*, double** %t272
+  %t295 = add i64 %t282, 1
+  %t296 = getelementptr double, double* %t294, i64 %t295
+  store double %t281, double* %t296
+  %t297 = add i64 %t282, 1
+  store i64 %t297, i64* %t270
+  br label %vgc_273
+vge_275:
+  %t298 = load i64, i64* %t270
+  %t299 = sitofp i64 %t298 to double
+  %t300 = load double*, double** %t272
+  %t301 = call i8* @__Vector_new(double* %t300, double %t299)
+  %t302 = ptrtoint i8* %t301 to i64
+  %t303 = bitcast i64 %t302 to double
+  %t304 = alloca double
+  store double %t303, double* %t304
+  %t306 = ptrtoint i8* getelementptr inbounds ([24 x i8], [24 x i8]* @.slit_305, i64 0, i64 0) to i64
+  %t307 = bitcast i64 %t306 to double
+  %t308 = bitcast double %t307 to i64
+  %t309 = alloca i64
+  store i64 %t308, i64* %t309
+  %t310 = load i64, i64* %t309
+  %t311 = inttoptr i64 %t310 to i8*
+  call i32 @puts(i8* %t311)
+  %t313 = ptrtoint i8* getelementptr inbounds ([10 x i8], [10 x i8]* @.slit_312, i64 0, i64 0) to i64
+  %t314 = bitcast i64 %t313 to double
+  %t315 = bitcast double %t314 to i64
+  %t316 = alloca i64
+  store i64 %t315, i64* %t316
+  %t317 = load i64, i64* %t316
+  %t318 = inttoptr i64 %t317 to i8*
+  call i32 @puts(i8* %t318)
+  %t319 = load double, double* %t218
+  call void @__hulk_print_vector(double %t319)
+  %t321 = ptrtoint i8* getelementptr inbounds ([11 x i8], [11 x i8]* @.slit_320, i64 0, i64 0) to i64
+  %t322 = bitcast i64 %t321 to double
+  %t323 = bitcast double %t322 to i64
+  %t324 = alloca i64
+  store i64 %t323, i64* %t324
+  %t325 = load i64, i64* %t324
+  %t326 = inttoptr i64 %t325 to i8*
+  call i32 @puts(i8* %t326)
+  %t327 = load double, double* %t261
+  call void @__hulk_print_vector(double %t327)
+  %t329 = ptrtoint i8* getelementptr inbounds ([14 x i8], [14 x i8]* @.slit_328, i64 0, i64 0) to i64
+  %t330 = bitcast i64 %t329 to double
+  %t331 = bitcast double %t330 to i64
+  %t332 = alloca i64
+  store i64 %t331, i64* %t332
+  %t333 = load i64, i64* %t332
+  %t334 = inttoptr i64 %t333 to i8*
+  call i32 @puts(i8* %t334)
+  %t335 = load double, double* %t304
+  call void @__hulk_print_vector(double %t335)
+  ret double 0.0e0
+}
+
+define double @__hulk_main() {
+entry:
+  %t336 = call double @test_number_vector()
+  %t338 = ptrtoint i8* getelementptr inbounds ([4 x i8], [4 x i8]* @.slit_337, i64 0, i64 0) to i64
+  %t339 = bitcast i64 %t338 to double
+  %t340 = bitcast double %t339 to i64
+  %t341 = alloca i64
+  store i64 %t340, i64* %t341
+  %t342 = load i64, i64* %t341
+  %t343 = inttoptr i64 %t342 to i8*
+  call i32 @puts(i8* %t343)
+  %t344 = call double @test_comprehension()
+  %t346 = ptrtoint i8* getelementptr inbounds ([4 x i8], [4 x i8]* @.slit_345, i64 0, i64 0) to i64
+  %t347 = bitcast i64 %t346 to double
+  %t348 = bitcast double %t347 to i64
+  %t349 = alloca i64
+  store i64 %t348, i64* %t349
+  %t350 = load i64, i64* %t349
+  %t351 = inttoptr i64 %t350 to i8*
+  call i32 @puts(i8* %t351)
+  %t352 = call double @test_empty_vector()
+  %t354 = ptrtoint i8* getelementptr inbounds ([4 x i8], [4 x i8]* @.slit_353, i64 0, i64 0) to i64
+  %t355 = bitcast i64 %t354 to double
+  %t356 = bitcast double %t355 to i64
+  %t357 = alloca i64
+  store i64 %t356, i64* %t357
+  %t358 = load i64, i64* %t357
+  %t359 = inttoptr i64 %t358 to i8*
+  call i32 @puts(i8* %t359)
+  %t360 = call double @test_conforming()
+  %t362 = ptrtoint i8* getelementptr inbounds ([4 x i8], [4 x i8]* @.slit_361, i64 0, i64 0) to i64
+  %t363 = bitcast i64 %t362 to double
+  %t364 = bitcast double %t363 to i64
+  %t365 = alloca i64
+  store i64 %t364, i64* %t365
+  %t366 = load i64, i64* %t365
+  %t367 = inttoptr i64 %t366 to i8*
+  call i32 @puts(i8* %t367)
+  %t368 = call double @test_nested_comprehension()
+  %t370 = ptrtoint i8* getelementptr inbounds ([39 x i8], [39 x i8]* @.slit_369, i64 0, i64 0) to i64
+  %t371 = bitcast i64 %t370 to double
+  %t372 = bitcast double %t371 to i64
+  %t373 = alloca i64
+  store i64 %t372, i64* %t373
+  %t374 = load i64, i64* %t373
+  %t375 = inttoptr i64 %t374 to i8*
+  call i32 @puts(i8* %t375)
+  ret double 0.0e0
 }
 
 define i8* @__hulk_num_to_str(double %val) {

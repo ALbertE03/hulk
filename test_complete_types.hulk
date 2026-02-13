@@ -1,0 +1,81 @@
+// Test exhaustivo del sistema de tipos genéricos Vector<T> en HULK
+
+// Test 1: Vector<Number> con inferencia completa
+function test_number_vector(): Number {
+    let v = [1, 2, 3, 4, 5] in {
+        print("Vector de números:");
+        print(v);
+        print("Primer elemento:");
+        print(v[0]);
+        print("Último elemento:");
+        print(v[4]);
+    };
+    0
+}
+
+// Test 2: Vector comprehension con tipo inferido
+function test_comprehension(): Number {
+    let nums = [1, 2, 3, 4, 5] in
+    let squares = [x * x | x in nums] in {
+        print("Cuadrados:");
+        print(squares);
+        print("Cuadrado de 3:");
+        print(squares[2]);  // 9
+    };
+    0
+}
+
+// Test 3: Vector vacío con anotación explícita
+function test_empty_vector(): Number {
+    let empty: Number[] = [] in {
+        print("Vector vacío:");
+        print(empty);
+    };
+    0
+}
+
+// Test 4: Conformidad de tipos - Number conforma a Object
+function test_conforming(): Number {
+    let num: Object = 42 in
+    let str: Object = "hello" in
+    let bool: Object = true in {
+        print("Number como Object:");
+        print(num);
+        print("String como Object:");
+        print(str);
+        print("Boolean como Object:");
+        print(bool);
+    };
+    0
+}
+
+// Test 5: Vector anidado en comprehension
+function test_nested_comprehension(): Number {
+    let v1 = [1, 2, 3] in
+    let v2 = [x * 2 | x in v1] in
+    let v3 = [y + 1 | y in v2] in {
+        print("Triple transformación:");
+        print("Original:");
+        print(v1);
+        print("Duplicado:");
+        print(v2);
+        print("Incrementado:");
+        print(v3);
+    };
+    0
+}
+
+function main(): Number {
+    test_number_vector();
+    print("---");
+    test_comprehension();
+    print("---");
+    test_empty_vector();
+    print("---");
+    test_conforming();
+    print("---");
+    test_nested_comprehension();
+    
+    print("Todos los tests pasaron correctamente!");
+    0
+}

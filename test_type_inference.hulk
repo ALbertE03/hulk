@@ -1,0 +1,45 @@
+// Test de inferencia de tipos según especificación HULK
+
+// 13.4.2: Tipo de argumento inferido desde uso aritmético
+function fib(n) => 
+    if (n == 0 | n == 1) 
+        1 
+    else 
+        fib(n-1) + fib(n-2);
+
+// 13.4.3: Tipo de argumento y variable inferidos
+function fact(x) => 
+    let f = 1 in 
+        for (i in [1, 2, 3, 4, 5]) 
+            f := f * i;
+
+function main(): Number {
+    // 13.4.1: Tipo de variable inferido desde literal
+    let x = 42 in {
+        print(x);  // x debe ser Number
+        print(x + 10);
+    };
+    
+    print(fib(10));
+    print(fact(5));
+    
+    // Test adicional: Vectores con inferencia
+    let nums = [1, 2, 3, 4, 5] in {
+        print(nums);
+        print(nums[0]);
+    };
+    
+    // Test: Type conforming - todo conforma a Object
+    let obj: Object = 42 in
+        print(obj);
+    
+    // Test: String literal inference
+    let mensaje = "Hello HULK" in
+        print(mensaje);
+    
+    // Test: Boolean inference
+    let verdad = true in
+        print(verdad);
+    
+    0
+}
