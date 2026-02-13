@@ -776,47 +776,126 @@ pub fn gen_expr(ctx: &mut Ctx, expr: &Spanned<Expr>) -> String {
         //  VectorGenerator [expr | var in iterable] 
         Expr::VectorGenerator { expr: elem_expr, var, iterable } => {
             let iter_val = gen_expr(ctx, iterable);
-
-            let sp = ctx.decode_ptr(&iter_val, "double*");
-            let len_d = ctx.tmp(); ctx.emit(&format!("{} = load double, double* {}", len_d, sp));
-            let len_i = ctx.tmp(); ctx.emit(&format!("{} = fptosi double {} to i64", len_i, len_d));
-
-            let one = ctx.tmp(); ctx.emit(&format!("{} = add i64 {}, 1", one, len_i));
-            let bytes = ctx.tmp(); ctx.emit(&format!("{} = mul i64 {}, 8", bytes, one));
-            let raw = ctx.tmp(); ctx.emit(&format!("{} = call i8* @malloc(i64 {})", raw, bytes));
+            let iter_class = resolve_obj_class_from_expr(ctx, &iterable.node);
+            let iter_ptr = ctx.decode_ptr(&iter_val, "i8*");
+            
+            // Resolver nombres de métodos next() y get_current()
+            let mut next_fn = "unknown_next".to_string();
+            let mut get_current_fn = "unknown_get_current".to_string();
+            
+            if let Some(ref cls) = iter_class {
+                if let Some(layout) = ctx.classes.get(cls.as_str()) {
+                    if let Some(fname) = layout.method_names.get("next") {
+                        next_fn = fname[1..].to_string();
+                    }
+                    if let Some(fname) = layout.method_names.get("get_current") {
+                        get_current_fn = fname[1..].to_string();
+                    }
+                }
+            }
+            
+            // Respaldo: buscar en todas las clases
+            if next_fn.starts_with("unknown_") || get_current_fn.starts_with("unknown_") {
+                for (_, layout) in &ctx.classes {
+                    if next_fn.starts_with("unknown_") {
+                        if let Some(fname) = layout.method_names.get("next") {
+                            next_fn = fname[1..].to_string();
+                        }
+                    }
+                    if get_current_fn.starts_with("unknown_") {
+                        if let Some(fname) = layout.method_names.get("get_current") {
+                            get_current_fn = fname[1..].to_string();
+                        }
+                    }
+                }
+            }
+            
+            // Crear vector temporal con capacidad inicial
+            let cap_est = 100i64;
+            let bytes_est = ctx.tmp(); ctx.emit(&format!("{} = mul i64 {}, 8", bytes_est, cap_est + 1));
+            let raw = ctx.tmp(); ctx.emit(&format!("{} = call i8* @malloc(i64 {})", raw, bytes_est));
             let dp = ctx.tmp(); ctx.emit(&format!("{} = bitcast i8* {} to double*", dp, raw));
-            ctx.emit(&format!("store double {}, double* {}", len_d, dp));
-
-            let idx_ptr = ctx.tmp(); ctx.emit(&format!("{} = alloca i64", idx_ptr));
-            ctx.emit(&format!("store i64 0, i64* {}", idx_ptr));
-
+            
+            // Contadores
+            let count_ptr = ctx.tmp(); ctx.emit(&format!("{} = alloca i64", count_ptr));
+            ctx.emit(&format!("store i64 0, i64* {}", count_ptr));
+            let cap_ptr = ctx.tmp(); ctx.emit(&format!("{} = alloca i64", cap_ptr));
+            ctx.emit(&format!("store i64 {}, i64* {}", cap_est, cap_ptr));
+            
+            // Puntero al vector (puede cambiar con realloc)
+            let dp_ptr = ctx.tmp(); ctx.emit(&format!("{} = alloca double*", dp_ptr));
+            ctx.emit(&format!("store double* {}, double** {}", dp, dp_ptr));
+            
+            // Loop: while (iter.next())
             let lc = ctx.lbl("vgc"); let lb = ctx.lbl("vgb"); let le = ctx.lbl("vge");
             ctx.emit(&format!("br label %{}", lc));
+            
             ctx.emit_label(&lc);
-            let ci = ctx.tmp(); ctx.emit(&format!("{} = load i64, i64* {}", ci, idx_ptr));
-            let cc = ctx.tmp(); ctx.emit(&format!("{} = icmp slt i64 {}, {}", cc, ci, len_i));
-            ctx.emit(&format!("br i1 {}, label %{}, label %{}", cc, lb, le));
-
+            // Llamar iter.next()
+            let has_next = ctx.tmp();
+            ctx.emit(&format!("{} = call double @{}(i8* {})", has_next, next_fn, iter_ptr));
+            let cond = ctx.tmp(); ctx.emit(&format!("{} = fcmp one double {}, 0.0", cond, has_next));
+            ctx.emit(&format!("br i1 {}, label %{}, label %{}", cond, lb, le));
+            
             ctx.emit_label(&lb);
             ctx.enter_scope();
-            let off = ctx.tmp(); ctx.emit(&format!("{} = add i64 {}, 1", off, ci));
-            let ep = ctx.tmp(); ctx.emit(&format!("{} = getelementptr double, double* {}, i64 {}", ep, sp, off));
-            let ev = ctx.tmp(); ctx.emit(&format!("{} = load double, double* {}", ev, ep));
+            
+            // Llamar iter.get_current()
+            let current_val = ctx.tmp();
+            ctx.emit(&format!("{} = call double @{}(i8* {})", current_val, get_current_fn, iter_ptr));
+            
+            // Definir variable del loop
             let vp = ctx.tmp(); ctx.emit(&format!("{} = alloca double", vp));
-            ctx.emit(&format!("store double {}, double* {}", ev, vp));
+            ctx.emit(&format!("store double {}, double* {}", current_val, vp));
             ctx.def_var(var, &vp, ValTy::Num);
-
+            
+            // Evaluar expresión
             let mapped = gen_expr(ctx, elem_expr);
-            let dp2 = ctx.tmp(); ctx.emit(&format!("{} = getelementptr double, double* {}, i64 {}", dp2, dp, off));
-            ctx.emit(&format!("store double {}, double* {}", mapped, dp2));
-
-            let ni = ctx.tmp(); ctx.emit(&format!("{} = add i64 {}, 1", ni, ci));
-            ctx.emit(&format!("store i64 {}, i64* {}", ni, idx_ptr));
+            
+            // Verificar capacidad
+            let cnt = ctx.tmp(); ctx.emit(&format!("{} = load i64, i64* {}", cnt, count_ptr));
+            let cap = ctx.tmp(); ctx.emit(&format!("{} = load i64, i64* {}", cap, cap_ptr));
+            let need_grow = ctx.tmp(); ctx.emit(&format!("{} = icmp sge i64 {}, {}", need_grow, cnt, cap));
+            
+            let grow_lbl = ctx.lbl("vg_grow");
+            let store_lbl = ctx.lbl("vg_store");
+            ctx.emit(&format!("br i1 {}, label %{}, label %{}", need_grow, grow_lbl, store_lbl));
+            
+            // Expandir
+            ctx.emit_label(&grow_lbl);
+            let new_cap = ctx.tmp(); ctx.emit(&format!("{} = mul i64 {}, 2", new_cap, cap));
+            let new_bytes = ctx.tmp(); ctx.emit(&format!("{} = add i64 {}, 1", new_bytes, new_cap));
+            let new_bytes2 = ctx.tmp(); ctx.emit(&format!("{} = mul i64 {}, 8", new_bytes2, new_bytes));
+            let old_dp = ctx.tmp(); ctx.emit(&format!("{} = load double*, double** {}", old_dp, dp_ptr));
+            let old_dp_i8 = ctx.tmp(); ctx.emit(&format!("{} = bitcast double* {} to i8*", old_dp_i8, old_dp));
+            let new_raw = ctx.tmp(); ctx.emit(&format!("{} = call i8* @realloc(i8* {}, i64 {})", new_raw, old_dp_i8, new_bytes2));
+            let new_dp = ctx.tmp(); ctx.emit(&format!("{} = bitcast i8* {} to double*", new_dp, new_raw));
+            ctx.emit(&format!("store double* {}, double** {}", new_dp, dp_ptr));
+            ctx.emit(&format!("store i64 {}, i64* {}", new_cap, cap_ptr));
+            ctx.emit(&format!("br label %{}", store_lbl));
+            
+            // Guardar elemento
+            ctx.emit_label(&store_lbl);
+            let cur_dp = ctx.tmp(); ctx.emit(&format!("{} = load double*, double** {}", cur_dp, dp_ptr));
+            let off = ctx.tmp(); ctx.emit(&format!("{} = add i64 {}, 1", off, cnt));
+            let elem_ptr = ctx.tmp(); ctx.emit(&format!("{} = getelementptr double, double* {}, i64 {}", elem_ptr, cur_dp, off));
+            ctx.emit(&format!("store double {}, double* {}", mapped, elem_ptr));
+            
+            // Incrementar contador
+            let new_cnt = ctx.tmp(); ctx.emit(&format!("{} = add i64 {}, 1", new_cnt, cnt));
+            ctx.emit(&format!("store i64 {}, i64* {}", new_cnt, count_ptr));
+            
             ctx.exit_scope();
             ctx.emit(&format!("br label %{}", lc));
-
+            
             ctx.emit_label(&le);
-            let pi = ctx.tmp(); ctx.emit(&format!("{} = ptrtoint double* {} to i64", pi, dp));
+            // Guardar longitud
+            let final_cnt = ctx.tmp(); ctx.emit(&format!("{} = load i64, i64* {}", final_cnt, count_ptr));
+            let final_cnt_d = ctx.tmp(); ctx.emit(&format!("{} = sitofp i64 {} to double", final_cnt_d, final_cnt));
+            let final_dp = ctx.tmp(); ctx.emit(&format!("{} = load double*, double** {}", final_dp, dp_ptr));
+            ctx.emit(&format!("store double {}, double* {}", final_cnt_d, final_dp));
+            
+            let pi = ctx.tmp(); ctx.emit(&format!("{} = ptrtoint double* {} to i64", pi, final_dp));
             let d = ctx.tmp(); ctx.emit(&format!("{} = bitcast i64 {} to double", d, pi));
             d
         }
@@ -1211,6 +1290,7 @@ fn infer_val_ty(ctx: &Ctx, init_expr: &Expr) -> ValTy {
             }
             ValTy::Num
         }
+        Expr::VectorLiteral(_) | Expr::VectorGenerator { .. } => ValTy::Obj("Vector".to_string()),
         _ => ValTy::Num,
     }
 }
@@ -1222,7 +1302,7 @@ fn infer_val_ty(ctx: &Ctx, init_expr: &Expr) -> ValTy {
 
 /// Resultado de pista de tipo para una expresión.
 #[derive(Clone, Copy, Debug, PartialEq)]
-enum ExprTyHint { Str, Num, Bool, Unknown }
+enum ExprTyHint { Str, Num, Bool, Vector, Unknown }
 
 /// Determinar el tipo probable en tiempo de ejecución de una expresión usando la estructura del AST
 /// y metadatos de atributos de clase.
@@ -1232,6 +1312,9 @@ fn expr_type_hint(ctx: &Ctx, expr: &Expr) -> ExprTyHint {
         Expr::String(_) => ExprTyHint::Str,
         Expr::Number(_) | Expr::PI | Expr::E | Expr::Rand => ExprTyHint::Num,
         Expr::Boolean(_) => ExprTyHint::Bool,
+        
+        // Vectores
+        Expr::VectorLiteral(_) | Expr::VectorGenerator { .. } => ExprTyHint::Vector,
 
         // Operaciones binarias
         Expr::Binary(_, Op::Concat, _) | Expr::Binary(_, Op::ConcatSpace, _) => ExprTyHint::Str,
@@ -1324,6 +1407,7 @@ fn expr_type_hint(ctx: &Ctx, expr: &Expr) -> ExprTyHint {
                 Some(ValTy::Str) => ExprTyHint::Str,
                 Some(ValTy::Bool) => ExprTyHint::Bool,
                 Some(ValTy::Num) => ExprTyHint::Num,
+                Some(ValTy::Obj(ref ty_name)) if ty_name == "Vector" => ExprTyHint::Vector,
                 _ => ExprTyHint::Unknown,
             }
         }
@@ -1378,6 +1462,12 @@ fn gen_to_str_ptr(ctx: &mut Ctx, expr: &Expr, val: &str) -> String {
             ctx.emit(&format!("{} = call i8* @__hulk_num_to_str(double {})", p, val));
             p
         }
+        ExprTyHint::Vector => {
+            // Para vectores, convertir a representación string
+            let p = ctx.tmp();
+            ctx.emit(&format!("{} = call i8* @__hulk_vector_to_str(double {})", p, val));
+            p
+        }
         ExprTyHint::Unknown => {
             // Tipo desconocido en tiempo de compilación — auto-detección en runtime (puntero de cadena vs número)
             let p = ctx.tmp();
@@ -1406,6 +1496,9 @@ fn gen_print(ctx: &mut Ctx, args: &[Spanned<Expr>]) {
             ExprTyHint::Num => {
                 ctx.emit(&format!("call i32 (i8*, ...) @printf(i8* getelementptr inbounds ([5 x i8], [5 x i8]* @.fmt_num, i64 0, i64 0), double {})", val));
                 ctx.emit("call i32 @puts(i8* getelementptr inbounds ([1 x i8], [1 x i8]* @.empty_s, i64 0, i64 0))");
+            }
+            ExprTyHint::Vector => {
+                ctx.emit(&format!("call void @__hulk_print_vector(double {})", val));
             }
             ExprTyHint::Unknown => {
                 ctx.emit(&format!("call void @__hulk_print_val(double {})", val));

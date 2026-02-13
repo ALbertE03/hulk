@@ -33,8 +33,7 @@ fn is_constant(expr: &Expr) -> bool {
     matches!(expr, Expr::Number(_) | Expr::Boolean(_) | Expr::String(_) | Expr::PI | Expr::E)
 }
 
-/// Recursively collects all variable names that appear as targets of `:=` assignments.
-/// These variables are mutable and must NOT be constant-propagated.
+
 fn collect_assigned_vars(expr: &Expr, out: &mut std::collections::HashSet<String>) {
     match expr {
         Expr::Assignment { target, value } => {

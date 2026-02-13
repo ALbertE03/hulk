@@ -47,15 +47,15 @@ fn compile_and_run(code: &str) -> RunResponse {
         }
     };
 
-    // 2) Expansión de macros
+    // Expansión de macros
     let mut expanded = expand_macros(program);
 
-    // 3) Transformación de implicit functors (ANTES del semantic check)
+    //  Transformación de implicit functors (ANTES del semantic check)
     // Usamos un contexto vacío solo para detectar protocolos del AST
     let temp_ctx = hulk_compiler::semantic::Context::new();
     transform_implicit_functors(&mut expanded, &temp_ctx);
 
-    // 4) Chequeo semántico
+    //  Chequeo semántico
     let context = match hulk_compiler::semantic::check_program(&expanded) {
         Ok(ctx) => ctx,
         Err(errors) => {
@@ -74,14 +74,14 @@ fn compile_and_run(code: &str) -> RunResponse {
         }
     };
 
-    // 5) Optimización
+    //  Optimización
     let optimized = optimize_program(expanded);
 
-    // 6) Generación LLVM IR
+    //  Generación LLVM IR
     let generator = LlvmGenerator;
     let llvm_code = generator.generate(&optimized, &context);
 
-    // 7) Escribir IR a archivo temporal
+    //  Escribir IR a archivo temporal
     let temp_dir = std::env::temp_dir();
     let ll_path = temp_dir.join("hulk_playground.ll");
     let bin_path = temp_dir.join("hulk_playground_bin");
@@ -96,7 +96,7 @@ fn compile_and_run(code: &str) -> RunResponse {
         };
     }
 
-    //  Generar LLVM IR optimizado para mostrar
+    //  Generar LLVM IR  para mostrar
     let optimized_ll_path = temp_dir.join("hulk_playground_opt.ll");
     let opt_result = Command::new("clang")
         .args([

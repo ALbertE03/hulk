@@ -78,6 +78,9 @@ declare double @llvm.floor.f64(double)\n\
 @.false_s  = private unnamed_addr constant [6 x i8] c\"false\\00\"\n\
 @.space_s  = private unnamed_addr constant [2 x i8] c\" \\00\"\n\
 @.empty_s  = private unnamed_addr constant [1 x i8] c\"\\00\"\n\
+@.vec_open = private unnamed_addr constant [2 x i8] c\"[\\00\"\n\
+@.vec_close = private unnamed_addr constant [2 x i8] c\"]\\00\"\n\
+@.vec_sep  = private unnamed_addr constant [3 x i8] c\", \\00\"\n\
 @.oob_msg  = private unnamed_addr constant [36 x i8] c\"Runtime error: index out of bounds\\0A\\00\"\n\
 @.rand_seeded = global i1 false\n\
 ".to_string();

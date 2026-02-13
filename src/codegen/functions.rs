@@ -76,6 +76,147 @@ entry:
 }
 
 ");
+
+    // ── @__hulk_print_vector(double)  ─  imprimir un vector
+    //    Decodifica el puntero, lee la longitud y los elementos
+    ctx.functions.push_str("\
+define void @__hulk_print_vector(double %val) {
+entry:
+  ; Decodificar puntero del vector
+  %pi = bitcast double %val to i64
+  %ptr = inttoptr i64 %pi to double*
+  
+  ; Leer longitud
+  %len_d = load double, double* %ptr
+  %len_i = fptosi double %len_d to i64
+  
+  ; Imprimir apertura
+  call i32 (i8*, ...) @printf(i8* getelementptr inbounds ([2 x i8], [2 x i8]* @.vec_open, i64 0, i64 0))
+  
+  ; Inicializar índice
+  %idx_ptr = alloca i64
+  store i64 0, i64* %idx_ptr
+  br label %loop_cond
+  
+loop_cond:
+  %i = load i64, i64* %idx_ptr
+  %cond = icmp slt i64 %i, %len_i
+  br i1 %cond, label %loop_body, label %loop_end
+  
+loop_body:
+  ; Leer elemento en posición i+1 (skip length)
+  %off = add i64 %i, 1
+  %elem_ptr = getelementptr double, double* %ptr, i64 %off
+  %elem = load double, double* %elem_ptr
+  
+  ; Imprimir separador si no es el primero
+  %is_first = icmp eq i64 %i, 0
+  br i1 %is_first, label %print_elem, label %print_sep
+  
+print_sep:
+  call i32 (i8*, ...) @printf(i8* getelementptr inbounds ([3 x i8], [3 x i8]* @.vec_sep, i64 0, i64 0))
+  br label %print_elem
+  
+print_elem:
+  ; Imprimir el elemento
+  call i32 (i8*, ...) @printf(i8* getelementptr inbounds ([5 x i8], [5 x i8]* @.fmt_num, i64 0, i64 0), double %elem)
+  
+  ; Incrementar índice
+  %next_i = add i64 %i, 1
+  store i64 %next_i, i64* %idx_ptr
+  br label %loop_cond
+  
+loop_end:
+  ; Imprimir cierre
+  call i32 (i8*, ...) @printf(i8* getelementptr inbounds ([2 x i8], [2 x i8]* @.vec_close, i64 0, i64 0))
+  call i32 @puts(i8* getelementptr inbounds ([1 x i8], [1 x i8]* @.empty_s, i64 0, i64 0))
+  ret void
+}
+
+");
+
+    // ── @__hulk_vector_to_str(double) -> i8*  ─  convertir vector a string
+    ctx.functions.push_str("\
+define i8* @__hulk_vector_to_str(double %val) {
+entry:
+  ; Decodificar puntero
+  %pi = bitcast double %val to i64
+  %ptr = inttoptr i64 %pi to double*
+  %len_d = load double, double* %ptr
+  %len_i = fptosi double %len_d to i64
+  
+  ; Calcular tamaño aproximado del buffer (20 chars por número + separadores)
+  %est_size = mul i64 %len_i, 20
+  %buf_size = add i64 %est_size, 100
+  %buf_raw = call i8* @malloc(i64 %buf_size)
+  
+  ; Copiar '['
+  %pos_ptr = alloca i64
+  store i64 0, i64* %pos_ptr
+  %open_ptr = getelementptr i8, i8* %buf_raw, i64 0
+  store i8 91, i8* %open_ptr  ; '[' = 91
+  store i64 1, i64* %pos_ptr
+  
+  ; Loop sobre elementos
+  %idx_ptr = alloca i64
+  store i64 0, i64* %idx_ptr
+  br label %loop_cond
+  
+loop_cond:
+  %i = load i64, i64* %idx_ptr
+  %cond = icmp slt i64 %i, %len_i
+  br i1 %cond, label %loop_body, label %loop_end
+  
+loop_body:
+  ; Agregar separador si no es el primero
+  %is_first = icmp eq i64 %i, 0
+  br i1 %is_first, label %get_elem, label %add_sep
+  
+add_sep:
+  %pos1 = load i64, i64* %pos_ptr
+  %sep1_ptr = getelementptr i8, i8* %buf_raw, i64 %pos1
+  store i8 44, i8* %sep1_ptr  ; ',' = 44
+  %pos2 = add i64 %pos1, 1
+  %sep2_ptr = getelementptr i8, i8* %buf_raw, i64 %pos2
+  store i8 32, i8* %sep2_ptr  ; ' ' = 32
+  %pos3 = add i64 %pos2, 1
+  store i64 %pos3, i64* %pos_ptr
+  br label %get_elem
+  
+get_elem:
+  ; Leer elemento y convertir a string
+  %off = add i64 %i, 1
+  %elem_ptr = getelementptr double, double* %ptr, i64 %off
+  %elem = load double, double* %elem_ptr
+  %elem_str = call i8* @__hulk_num_to_str(double %elem)
+  
+  ; Concatenar al buffer
+  %pos4 = load i64, i64* %pos_ptr
+  %dest_ptr = getelementptr i8, i8* %buf_raw, i64 %pos4
+  call i8* @strcpy(i8* %dest_ptr, i8* %elem_str)
+  %elem_len = call i64 @strlen(i8* %elem_str)
+  %pos5 = add i64 %pos4, %elem_len
+  store i64 %pos5, i64* %pos_ptr
+  call void @free(i8* %elem_str)
+  
+  ; Siguiente
+  %next_i = add i64 %i, 1
+  store i64 %next_i, i64* %idx_ptr
+  br label %loop_cond
+  
+loop_end:
+  ; Agregar ']'
+  %pos6 = load i64, i64* %pos_ptr
+  %close_ptr = getelementptr i8, i8* %buf_raw, i64 %pos6
+  store i8 93, i8* %close_ptr  ; ']' = 93
+  %pos7 = add i64 %pos6, 1
+  %null_ptr = getelementptr i8, i8* %buf_raw, i64 %pos7
+  store i8 0, i8* %null_ptr    ; null terminator
+  
+  ret i8* %buf_raw
+}
+
+");
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
