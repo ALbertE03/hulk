@@ -2,7 +2,7 @@ use crate::ast::nodes::*;
 use crate::utils::Spanned;
 use crate::errors::SemanticError;
 use super::context::{Context, conforms_to};
-use super::types::{Type, lowest_common_ancestor};
+use super::types::{Type, TypeKind, lowest_common_ancestor};
 use std::collections::HashMap;
 use std::rc::Rc;
 use std::cell::RefCell;
@@ -47,6 +47,19 @@ impl<'a> TypeChecker<'a> {
     }
     
     fn is_compatible(type_a: &Rc<RefCell<Type>>, type_b: &Rc<RefCell<Type>>) -> bool {
+        let name_a = &type_a.borrow().name;
+        let name_b = &type_b.borrow().name;
+        
+        // Caso especial: Vector<Object> vacío puede asignarse a cualquier Vector<T>
+        if name_a == "Vector<Object>" && name_b.starts_with("Vector<") {
+            return true;
+        }
+        
+        // Caso especial: Conformidad entre vectores del mismo tipo de elemento
+        if name_a.starts_with("Vector<") && name_b.starts_with("Vector<") {
+            return name_a == name_b;
+        }
+        
         type_a.borrow().conforms_to(type_b)
     }
     
@@ -409,26 +422,93 @@ impl<'a> TypeChecker<'a> {
     }
     
     fn visit_vector_literal(&mut self, elems: &[Spanned<Expr>], _pos: crate::utils::Position) -> Result<Rc<RefCell<Type>>, Vec<SemanticError>> {
-        for e in elems {
-            let _ = self.infer_type(e)?;
+        if elems.is_empty() {
+            // Vector vacío por defecto es Vector<Object>
+            let obj_ty = self.context.get_type("Object").unwrap();
+            let vec_ty = Rc::new(RefCell::new(Type::new("Vector<Object>", TypeKind::Basic, None)));
+            vec_ty.borrow_mut().define_attribute("__element_type".to_string(), obj_ty.clone());
+            
+            let num_type = self.context.get_type("Number").unwrap();
+            let bool_type = self.context.get_type("Boolean").unwrap();
+            vec_ty.borrow_mut().define_method("size".to_string(), vec![], num_type);
+            vec_ty.borrow_mut().define_method("next".to_string(), vec![], bool_type);
+            vec_ty.borrow_mut().define_method("get_current".to_string(), vec![], obj_ty);
+            
+            return Ok(vec_ty);
         }
-        Ok(self.context.get_type("Object").unwrap())
+        
+        // Inferir el tipo del elemento desde el primer elemento
+        let first_ty = self.infer_type(&elems[0])?;
+        
+        // Verificar que todos los elementos conformen al mismo tipo
+        for e in &elems[1..] {
+            let elem_ty = self.infer_type(e)?;
+            if !conforms_to(elem_ty.clone(), first_ty.clone()) {
+                return Err(vec![SemanticError::TypeMismatch{ 
+                    expected: first_ty.borrow().name.clone(), 
+                    found: elem_ty.borrow().name.clone(), 
+                    pos: e.pos 
+                }]);
+            }
+        }
+        
+        // Crear tipo Vector<T> con el tipo del elemento
+        let elem_name = first_ty.borrow().name.clone();
+        let vec_name = format!("Vector<{}>", elem_name);
+        let vec_ty = Rc::new(RefCell::new(Type::new(&vec_name, TypeKind::Basic, None)));
+        vec_ty.borrow_mut().define_attribute("__element_type".to_string(), first_ty.clone());
+        
+        let num_type = self.context.get_type("Number").unwrap();
+        let bool_type = self.context.get_type("Boolean").unwrap();
+        vec_ty.borrow_mut().define_method("size".to_string(), vec![], num_type);
+        vec_ty.borrow_mut().define_method("next".to_string(), vec![], bool_type);
+        vec_ty.borrow_mut().define_method("get_current".to_string(), vec![], first_ty.clone());
+        
+        Ok(vec_ty)
     }
     
     fn visit_vector_generator(&mut self, expr: &Spanned<Expr>, var: &str, iterable: &Spanned<Expr>, _pos: crate::utils::Position) -> Result<Rc<RefCell<Type>>, Vec<SemanticError>> {
-        let _ = self.infer_type(iterable)?;
+        let iterable_ty = self.infer_type(iterable)?;
+        
+        // Verificar que el iterable implemente el protocolo Iterable (métodos next y get_current)
+        let has_next = iterable_ty.borrow().methods.contains_key("next");
+        let has_current = iterable_ty.borrow().methods.contains_key("get_current");
+        
+        if !has_next || !has_current {
+            return Err(vec![SemanticError::MethodNotFound(
+                format!("{}::next/get_current", iterable_ty.borrow().name)
+            )]);
+        }
         
         self.enter_scope();
-        self.define(var.to_string(), self.context.get_type("Object").unwrap());
-        let result = self.infer_type(expr);
+        // Usar el tipo de retorno de get_current como tipo de la variable iteradora
+        let elem_ty = if let Some(current_method) = iterable_ty.borrow().methods.get("get_current") {
+            current_method.return_type.clone()
+        } else {
+            self.context.get_type("Object").unwrap()
+        };
+        
+        self.define(var.to_string(), elem_ty);
+        let result_ty = self.infer_type(expr)?;
         self.exit_scope();
         
-        result?;
-        Ok(self.context.get_type("Object").unwrap())
+        // Crear tipo Vector<result_ty> donde result_ty es el tipo de la expresión generada
+        let result_name = result_ty.borrow().name.clone();
+        let vec_name = format!("Vector<{}>", result_name);
+        let vec_ty = Rc::new(RefCell::new(Type::new(&vec_name, TypeKind::Basic, None)));
+        vec_ty.borrow_mut().define_attribute("__element_type".to_string(), result_ty.clone());
+        
+        let num_type = self.context.get_type("Number").unwrap();
+        let bool_type = self.context.get_type("Boolean").unwrap();
+        vec_ty.borrow_mut().define_method("size".to_string(), vec![], num_type);
+        vec_ty.borrow_mut().define_method("next".to_string(), vec![], bool_type);
+        vec_ty.borrow_mut().define_method("get_current".to_string(), vec![], result_ty.clone());
+        
+        Ok(vec_ty)
     }
     
     fn visit_indexing(&mut self, obj: &Spanned<Expr>, index: &Spanned<Expr>, _pos: crate::utils::Position) -> Result<Rc<RefCell<Type>>, Vec<SemanticError>> {
-        let _ = self.infer_type(obj)?;
+        let obj_ty = self.infer_type(obj)?;
         let t_idx = self.infer_type(index)?;
         
         if t_idx.borrow().name != "Number" {
@@ -439,6 +519,25 @@ impl<'a> TypeChecker<'a> {
             }]);
         }
         
+        // Para tipos Vector<T>, extraer el tipo del elemento T
+        let obj_name = &obj_ty.borrow().name;
+        if obj_name.starts_with("Vector<") {
+            // Intentar obtener el tipo del elemento desde el atributo __element_type
+            if let Some(elem_ty) = obj_ty.borrow().get_attribute("__element_type") {
+                return Ok(elem_ty);
+            }
+            // Fallback: parsear el nombre del tipo Vector<T>
+            if let Some(end) = obj_name.rfind('>') {
+                if let Some(start) = obj_name.find('<') {
+                    let elem_name = &obj_name[start + 1..end];
+                    if let Ok(elem_ty) = self.context.get_type(elem_name) {
+                        return Ok(elem_ty);
+                    }
+                }
+            }
+        }
+        
+        // Default: retornar Object para vectores sin tipo conocido
         Ok(self.context.get_type("Object").unwrap())
     }
     

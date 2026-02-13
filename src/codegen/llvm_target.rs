@@ -6,6 +6,7 @@ use super::context::Ctx;
 use super::classes::{topo_sort_classes, emit_class};
 use super::functions::{emit_function, emit_macro, emit_helper_functions};
 use super::expressions::{gen_expr, infer_return_type_from_body};
+use super::builtins::emit_vector_type;
 
 /// Genera una función dispatch para un protocolo functor
 fn emit_protocol_dispatch(ctx: &mut Ctx, proto_name: &str, implementations: &[(u32, String)]) {
@@ -75,6 +76,10 @@ impl super::CodeGenerator for LlvmGenerator {
         }
 
         let ordered = topo_sort_classes(&decl_map, &parent_map);
+        
+        // Emitir tipo Vector implícito antes de las clases del usuario
+        emit_vector_type(&mut ctx);
+        
         for name in &ordered {
             if let Some(td) = decl_map.get(name.as_str()) {
                 emit_class(&mut ctx, td, &gen_expr, &infer_return_type_from_body);
@@ -118,7 +123,7 @@ impl super::CodeGenerator for LlvmGenerator {
         emit_helper_functions(&mut ctx);
 
         ctx.functions.push_str("define i32 @main() {\nentry:\n");
-        let _val = gen_expr(&mut ctx, &program.expr);
+        ctx.functions.push_str("  call double @__hulk_main()\n");
         ctx.functions.push_str("  ret i32 0\n}\n");
 
         format!("{}\n{}\n{}\n{}", ctx.preamble, ctx.globals, ctx.functions, ctx.lambda_defs)

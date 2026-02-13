@@ -756,19 +756,27 @@ pub fn gen_expr(ctx: &mut Ctx, expr: &Spanned<Expr>) -> String {
         //  Literal de vector 
         Expr::VectorLiteral(elems) => {
             let count = elems.len();
-            let total = (count + 1) as u64 * 8;
+            // Crear array de datos: [elem0, elem1, ...]
+            let data_bytes = count as u64 * 8;
             let raw = ctx.tmp();
-            ctx.emit(&format!("{} = call i8* @malloc(i64 {})", raw, total));
+            ctx.emit(&format!("{} = call i8* @malloc(i64 {})", raw, data_bytes));
             let arr = ctx.tmp();
             ctx.emit(&format!("{} = bitcast i8* {} to double*", arr, raw));
-            ctx.emit(&format!("store double {}, double* {}", fmt_double(count as f64), arr));
+            
             for (i, e) in elems.iter().enumerate() {
                 let v = gen_expr(ctx, e);
                 let gep = ctx.tmp();
-                ctx.emit(&format!("{} = getelementptr double, double* {}, i64 {}", gep, arr, i + 1));
+                ctx.emit(&format!("{} = getelementptr double, double* {}, i64 {}", gep, arr, i));
                 ctx.emit(&format!("store double {}, double* {}", v, gep));
             }
-            let pi = ctx.tmp(); ctx.emit(&format!("{} = ptrtoint double* {} to i64", pi, arr));
+            
+            // Crear objeto __Vector con el array
+            let len = fmt_double(count as f64);
+            let obj = ctx.tmp();
+            ctx.emit(&format!("{} = call i8* @__Vector_new(double* {}, double {})", obj, arr, len));
+            
+            // Retornar como double (puntero encoded)
+            let pi = ctx.tmp(); ctx.emit(&format!("{} = ptrtoint i8* {} to i64", pi, obj));
             let d = ctx.tmp(); ctx.emit(&format!("{} = bitcast i64 {} to double", d, pi));
             d
         }
@@ -889,13 +897,17 @@ pub fn gen_expr(ctx: &mut Ctx, expr: &Spanned<Expr>) -> String {
             ctx.emit(&format!("br label %{}", lc));
             
             ctx.emit_label(&le);
-            // Guardar longitud
+            // Crear objeto __Vector con los datos recolectados
             let final_cnt = ctx.tmp(); ctx.emit(&format!("{} = load i64, i64* {}", final_cnt, count_ptr));
             let final_cnt_d = ctx.tmp(); ctx.emit(&format!("{} = sitofp i64 {} to double", final_cnt_d, final_cnt));
             let final_dp = ctx.tmp(); ctx.emit(&format!("{} = load double*, double** {}", final_dp, dp_ptr));
-            ctx.emit(&format!("store double {}, double* {}", final_cnt_d, final_dp));
             
-            let pi = ctx.tmp(); ctx.emit(&format!("{} = ptrtoint double* {} to i64", pi, final_dp));
+            // Crear objeto Vector
+            let obj = ctx.tmp();
+            ctx.emit(&format!("{} = call i8* @__Vector_new(double* {}, double {})", obj, final_dp, final_cnt_d));
+            
+            // Retornar como double
+            let pi = ctx.tmp(); ctx.emit(&format!("{} = ptrtoint i8* {} to i64", pi, obj));
             let d = ctx.tmp(); ctx.emit(&format!("{} = bitcast i64 {} to double", d, pi));
             d
         }
@@ -904,12 +916,25 @@ pub fn gen_expr(ctx: &mut Ctx, expr: &Spanned<Expr>) -> String {
         Expr::Indexing { obj, index } => {
             let ov = gen_expr(ctx, obj);
             let iv = gen_expr(ctx, index);
-            let op = ctx.decode_ptr(&ov, "double*");
-            let ii = ctx.tmp(); ctx.emit(&format!("{} = fptosi double {} to i64", ii, iv));
-
+            
+            // Decodificar objeto Vector
+            let obj_ptr = ctx.decode_ptr(&ov, "i8*");
+            let vec_ptr = ctx.tmp();
+            ctx.emit(&format!("{} = bitcast i8* {} to %__Vector*", vec_ptr, obj_ptr));
+            
+            // Cargar longitud del vector
+            let len_ptr = ctx.tmp();
+            ctx.emit(&format!("{} = getelementptr inbounds %__Vector, %__Vector* {}, i32 0, i32 2", len_ptr, vec_ptr));
+            let len_d = ctx.tmp();
+            ctx.emit(&format!("{} = load double, double* {}", len_d, len_ptr));
+            let len_i = ctx.tmp();
+            ctx.emit(&format!("{} = fptosi double {} to i64", len_i, len_d));
+            
+            // Convertir índice a entero
+            let ii = ctx.tmp();
+            ctx.emit(&format!("{} = fptosi double {} to i64", ii, iv));
+            
             //  Verificación de límites: 0 <= ii < len 
-            let len_d = ctx.tmp(); ctx.emit(&format!("{} = load double, double* {}", len_d, op));
-            let len_i = ctx.tmp(); ctx.emit(&format!("{} = fptosi double {} to i64", len_i, len_d));
             let neg_check = ctx.tmp(); ctx.emit(&format!("{} = icmp slt i64 {}, 0", neg_check, ii));
             let upper_check = ctx.tmp(); ctx.emit(&format!("{} = icmp sge i64 {}, {}", upper_check, ii, len_i));
             let oob = ctx.tmp(); ctx.emit(&format!("{} = or i1 {}, {}", oob, neg_check, upper_check));
@@ -924,9 +949,17 @@ pub fn gen_expr(ctx: &mut Ctx, expr: &Spanned<Expr>) -> String {
             ctx.emit("unreachable");
 
             ctx.emit_label(&ok_lbl);
-            let off = ctx.tmp(); ctx.emit(&format!("{} = add i64 {}, 1", off, ii));
-            let ep = ctx.tmp(); ctx.emit(&format!("{} = getelementptr double, double* {}, i64 {}", ep, op, off));
-            let v = ctx.tmp(); ctx.emit(&format!("{} = load double, double* {}", v, ep));
+            // Cargar data pointer del vector
+            let data_ptr_loc = ctx.tmp();
+            ctx.emit(&format!("{} = getelementptr inbounds %__Vector, %__Vector* {}, i32 0, i32 1", data_ptr_loc, vec_ptr));
+            let data_ptr = ctx.tmp();
+            ctx.emit(&format!("{} = load double*, double** {}", data_ptr, data_ptr_loc));
+            
+            // Acceder al elemento
+            let elem_ptr = ctx.tmp();
+            ctx.emit(&format!("{} = getelementptr double, double* {}, i64 {}", elem_ptr, data_ptr, ii));
+            let v = ctx.tmp();
+            ctx.emit(&format!("{} = load double, double* {}", v, elem_ptr));
             v
         }
 
@@ -1290,7 +1323,7 @@ fn infer_val_ty(ctx: &Ctx, init_expr: &Expr) -> ValTy {
             }
             ValTy::Num
         }
-        Expr::VectorLiteral(_) | Expr::VectorGenerator { .. } => ValTy::Obj("Vector".to_string()),
+        Expr::VectorLiteral(_) | Expr::VectorGenerator { .. } => ValTy::Obj("__Vector".to_string()),
         _ => ValTy::Num,
     }
 }
@@ -1407,7 +1440,7 @@ fn expr_type_hint(ctx: &Ctx, expr: &Expr) -> ExprTyHint {
                 Some(ValTy::Str) => ExprTyHint::Str,
                 Some(ValTy::Bool) => ExprTyHint::Bool,
                 Some(ValTy::Num) => ExprTyHint::Num,
-                Some(ValTy::Obj(ref ty_name)) if ty_name == "Vector" => ExprTyHint::Vector,
+                Some(ValTy::Obj(ref ty_name)) if ty_name == "__Vector" => ExprTyHint::Vector,
                 _ => ExprTyHint::Unknown,
             }
         }

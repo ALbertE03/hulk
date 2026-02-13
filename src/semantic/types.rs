@@ -116,6 +116,14 @@ impl Type {
     pub fn define_method(&mut self, name: String, params: Vec<(String, Rc<RefCell<Type>>)>, return_type: Rc<RefCell<Type>>) {
         self.methods.insert(name.clone(), MethodInfo { name, params, return_type });
     }
+    
+    pub fn define_attribute(&mut self, name: String, ty: Rc<RefCell<Type>>) {
+        self.attributes.insert(name, ty);
+    }
+    
+    pub fn get_attribute(&self, name: &str) -> Option<Rc<RefCell<Type>>> {
+        self.attributes.get(name).cloned()
+    }
 }
 
 impl PartialEq for Type {

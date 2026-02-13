@@ -897,6 +897,11 @@ impl Parser {
             while self.match_token(&Token::Star) {
                 ty = TypeAnnotation::Iterable(Box::new(ty));
             }
+            // Soporte para T[] (vector de T)
+            while self.match_token(&Token::LBracket) {
+                self.consume(&Token::RBracket, "Expected ']' after '[' in vector type")?;
+                ty = TypeAnnotation::Vector(Box::new(ty));
+            }
             Ok(ty)
         }
     }

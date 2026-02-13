@@ -4,6 +4,7 @@ mod context;
 mod classes;
 mod functions;
 mod expressions;
+mod builtins;
 
 #[cfg(test)]
 mod tests;

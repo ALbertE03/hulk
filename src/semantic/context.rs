@@ -89,6 +89,27 @@ impl Context {
                  
                  Ok(iter)
             },
+            TypeAnnotation::Vector(inner) => {
+                // Sistema de tipos genéricos para Vector<T>
+                let inner_type = self.resolve_type(inner)?;
+                let name = format!("Vector<{}>", inner_type.borrow().name);
+                
+                // Crear tipo Vector<T> al vuelo con métodos del protocolo Iterable
+                let vec_type = Rc::new(RefCell::new(Type::new(&name, TypeKind::Basic, None)));
+                
+                let num_type = self.get_type("Number")?;
+                let bool_type = self.get_type("Boolean")?;
+                
+                // Métodos del vector (implementa protocolo Iterable<T>)
+                vec_type.borrow_mut().define_method("size".to_string(), vec![], num_type.clone());
+                vec_type.borrow_mut().define_method("next".to_string(), vec![], bool_type);
+                vec_type.borrow_mut().define_method("get_current".to_string(), vec![], inner_type.clone());
+                
+                // Almacenar el tipo de elemento como metadata para indexing
+                vec_type.borrow_mut().define_attribute("__element_type".to_string(), inner_type);
+                
+                Ok(vec_type)
+            },
             TypeAnnotation::Function { params, return_type } => {
                 for p in params { self.resolve_type(p)?; }
                 self.resolve_type(return_type)?;

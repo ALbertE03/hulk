@@ -171,6 +171,9 @@ fn optimize_type_annotation(ty: TypeAnnotation, interner: &mut StringInterner) -
         TypeAnnotation::Iterable(inner) => {
             TypeAnnotation::Iterable(Box::new(optimize_type_annotation(*inner, interner)))
         }
+        TypeAnnotation::Vector(inner) => {
+            TypeAnnotation::Vector(Box::new(optimize_type_annotation(*inner, interner)))
+        }
     }
 }
 

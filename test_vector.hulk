@@ -1,0 +1,16 @@
+function main(): Number {
+    // Test vector literal
+    let v: Number[] = [1, 2, 3, 4, 5] in {
+        print(v);
+        
+        // Test indexing
+        print(v[0]);
+        print(v[2]);
+        
+        // Test vector comprehension
+        let squares: Number[] = [x * x | x in v] in {
+            print(squares);
+            squares[3]
+        }
+    }
+}

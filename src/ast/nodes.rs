@@ -22,6 +22,7 @@ pub enum TypeAnnotation {
         return_type: Box<TypeAnnotation>,
     },
     Iterable(Box<TypeAnnotation>),
+    Vector(Box<TypeAnnotation>),
 }
 
 #[derive(Debug, Clone, PartialEq)]

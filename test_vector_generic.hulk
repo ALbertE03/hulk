@@ -1,0 +1,27 @@
+function main(): Number {
+    // Test 1: Vector literal con tipo inferido
+    let v1: Number[] = [1, 2, 3, 4, 5] in {
+        print(v1);
+        print(v1[0]);
+        print(v1[4]);
+    };
+    
+    // Test 2: Vector comprehension
+    let range: Number[] = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10] in
+    let squares: Number[] = [x * x | x in range] in {
+        print(squares);
+        print(squares[5]); // 36
+    };
+    
+    // Test 3: Vector de vectores (anidado)
+    let v2: Number[] = [10, 20, 30] in
+    let doubled: Number[] = [x * 2 | x in v2] in {
+        print(doubled);
+    };
+    
+    // Test 4: Vector vacío
+    let empty: Number[] = [] in
+        print(empty);
+    
+    42
+}

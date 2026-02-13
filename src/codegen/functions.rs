@@ -78,17 +78,23 @@ entry:
 ");
 
     // ── @__hulk_print_vector(double)  ─  imprimir un vector
-    //    Decodifica el puntero, lee la longitud y los elementos
+    //    Decodifica el objeto __Vector y imprime sus elementos
     ctx.functions.push_str("\
 define void @__hulk_print_vector(double %val) {
 entry:
-  ; Decodificar puntero del vector
+  ; Decodificar objeto Vector
   %pi = bitcast double %val to i64
-  %ptr = inttoptr i64 %pi to double*
+  %obj_ptr = inttoptr i64 %pi to i8*
+  %ptr = bitcast i8* %obj_ptr to %__Vector*
   
-  ; Leer longitud
-  %len_d = load double, double* %ptr
+  ; Leer longitud del vector
+  %len_ptr = getelementptr inbounds %__Vector, %__Vector* %ptr, i32 0, i32 2
+  %len_d = load double, double* %len_ptr
   %len_i = fptosi double %len_d to i64
+  
+  ; Leer data pointer
+  %data_ptr_loc = getelementptr inbounds %__Vector, %__Vector* %ptr, i32 0, i32 1
+  %data_ptr = load double*, double** %data_ptr_loc
   
   ; Imprimir apertura
   call i32 (i8*, ...) @printf(i8* getelementptr inbounds ([2 x i8], [2 x i8]* @.vec_open, i64 0, i64 0))
@@ -104,9 +110,8 @@ loop_cond:
   br i1 %cond, label %loop_body, label %loop_end
   
 loop_body:
-  ; Leer elemento en posición i+1 (skip length)
-  %off = add i64 %i, 1
-  %elem_ptr = getelementptr double, double* %ptr, i64 %off
+  ; Leer elemento en posición i
+  %elem_ptr = getelementptr double, double* %data_ptr, i64 %i
   %elem = load double, double* %elem_ptr
   
   ; Imprimir separador si no es el primero
@@ -139,11 +144,19 @@ loop_end:
     ctx.functions.push_str("\
 define i8* @__hulk_vector_to_str(double %val) {
 entry:
-  ; Decodificar puntero
+  ; Decodificar objeto Vector
   %pi = bitcast double %val to i64
-  %ptr = inttoptr i64 %pi to double*
-  %len_d = load double, double* %ptr
+  %obj_ptr = inttoptr i64 %pi to i8*
+  %ptr = bitcast i8* %obj_ptr to %__Vector*
+  
+  ; Leer longitud
+  %len_ptr = getelementptr inbounds %__Vector, %__Vector* %ptr, i32 0, i32 2
+  %len_d = load double, double* %len_ptr
   %len_i = fptosi double %len_d to i64
+  
+  ; Leer data pointer
+  %data_ptr_loc = getelementptr inbounds %__Vector, %__Vector* %ptr, i32 0, i32 1
+  %data_ptr = load double*, double** %data_ptr_loc
   
   ; Calcular tamaño aproximado del buffer (20 chars por número + separadores)
   %est_size = mul i64 %len_i, 20
@@ -185,8 +198,7 @@ add_sep:
   
 get_elem:
   ; Leer elemento y convertir a string
-  %off = add i64 %i, 1
-  %elem_ptr = getelementptr double, double* %ptr, i64 %off
+  %elem_ptr = getelementptr double, double* %data_ptr, i64 %i
   %elem = load double, double* %elem_ptr
   %elem_str = call i8* @__hulk_num_to_str(double %elem)
   

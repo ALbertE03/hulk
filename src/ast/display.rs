@@ -13,8 +13,7 @@ impl fmt::Display for TypeAnnotation {
                 }
                 write!(f, ") -> {}", return_type)
             }
-            TypeAnnotation::Iterable(ty) => write!(f, "{}*", ty),
-        }
+            TypeAnnotation::Iterable(ty) => write!(f, "{}*", ty),            TypeAnnotation::Vector(ty) => write!(f, "{}[]", ty),        }
     }
 }
 
